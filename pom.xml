@@ -15,7 +15,7 @@
     <artifactId>path</artifactId>
     <version>0.1.0</version>
     <name>path</name>
-    <description>OpenAI-compatible multi-provider LLM gateway with routing, credits and usage metering</description>
+    <description>Provider-agnostic LLM gateway: routing, fallback, credits and cache-aware token metering for OpenAI, Anthropic and any OpenAI-compatible API</description>
 
     <properties>
         <java.version>21</java.version>

@@ -24,7 +24,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v1")
 @RequiredArgsConstructor
-public class OpenAiController {
+public class ChatCompletionsController {
 
     private final ChatService chatService;
     private final StreamService streamService;

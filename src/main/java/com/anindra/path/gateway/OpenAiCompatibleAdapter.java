@@ -25,7 +25,7 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class OpenAiAdapter implements ProviderAdapter {
+public class OpenAiCompatibleAdapter implements ProviderAdapter {
 
     private final ObjectMapper mapper;
 

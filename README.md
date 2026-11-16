@@ -4,9 +4,14 @@
 [![Release](https://github.com/an1ndra/path/actions/workflows/release.yml/badge.svg)](https://github.com/an1ndra/path/actions/workflows/release.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-An OpenAI-compatible LLM gateway in the mould of OpenRouter: one API in front of many
-providers, with model routing, automatic fallback, per-key credits, rate limits and
-usage metering. Spring Boot 3.5, Java 21, H2 by default (Postgres ready).
+A provider-agnostic LLM gateway. One HTTP surface in front of every provider you use —
+OpenAI, Anthropic, Groq, and anything OpenAI-compatible — with model routing, automatic
+fallback, per-key credits, rate limits and cache-aware token metering. Spring Boot 3.5,
+Java 21, H2 by default (Postgres ready).
+
+Clients speak the OpenAI chat-completions shape because that is what most SDKs,
+frameworks and CLI tools already implement. The gateway translates to each provider's
+native protocol, so adding or swapping a provider never changes client code.
 
 ```mermaid
 flowchart LR
@@ -27,8 +32,10 @@ response is metered on the way back.
 
 ## What it does
 
-- **One wire format.** Clients speak OpenAI chat-completions. Anthropic's Messages API
-  is translated in both directions, including streaming and tool calls.
+- **One surface, many providers.** OpenAI, Anthropic, Groq and any OpenAI-compatible
+  endpoint behind a single API. Anthropic's Messages API is translated in both
+  directions, including streaming and tool calls. Adding a provider is a database row,
+  not a client change.
 - **Routing.** A public model id (e.g. `gpt-4o-mini`, `auto-fast`) maps to one or more
   ordered routes. Lower `priority` wins.
 - **Fallback.** 429 / 408 / 5xx / timeouts fall through to the next route. Streaming
@@ -67,6 +74,20 @@ inferred from text length rather than observed.
 Aggregates: `/v1/usage` adds cache hit ratio and savings for the calling key;
 `/admin/stats` adds cache hit ratio and savings, p50/p95 TTFT, median throughput,
 fallback count and estimated-usage count.
+
+## Providers
+
+Two wire formats cover every provider worth proxying:
+
+| Type | Speaks | Works with |
+|---|---|---|
+| `OPENAI` | chat-completions | OpenAI, Groq, Together, Fireworks, DeepSeek, vLLM, LM Studio, Ollama's `/v1`, any compatible endpoint |
+| `ANTHROPIC` | Messages API | Anthropic (native, with prompt caching and tool calls) |
+
+Any other provider is a normalised capability, not a code change: register it with
+`POST /admin/providers`, give it a base URL and a wire type, then add routes. A new
+wire format would mean implementing `ProviderAdapter` (~200 lines for an
+OpenAI-shaped API, ~400 for Anthropic).
 
 ## Quick start
 

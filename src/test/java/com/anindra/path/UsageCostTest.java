@@ -71,7 +71,7 @@ class UsageCostTest {
 
     @Test
     void openAiUsageParsesCacheAndReasoningDetails() throws Exception {
-        OpenAiAdapter adapter = new OpenAiAdapter(mapper);
+        OpenAiCompatibleAdapter adapter = new OpenAiCompatibleAdapter(mapper);
         JsonNode upstream = mapper.readTree("""
                 {"usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120,
                            "prompt_tokens_details": {"cached_tokens": 40},
@@ -90,7 +90,7 @@ class UsageCostTest {
 
     @Test
     void missingUsageIsReportedAsEmpty() throws Exception {
-        OpenAiAdapter adapter = new OpenAiAdapter(mapper);
+        OpenAiCompatibleAdapter adapter = new OpenAiCompatibleAdapter(mapper);
         TokenUsage usage = adapter.parseUsage(mapper.readTree("{\"choices\":[]}"));
         assertThat(usage.reported()).isFalse();
     }

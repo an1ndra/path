@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a capability the gateway does not have yet
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should the gateway do instead? Include the API shape if you have one.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Routing and fallback
+        - Providers and adapters
+        - Streaming
+        - Credits and billing
+        - Metering and reporting
+        - Admin API
+        - Operations and deployment
+        - Other
+    validations:
+      required: true

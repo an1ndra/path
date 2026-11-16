@@ -8,7 +8,7 @@ RUN ./mvnw -B -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/target/path-0.1.0.jar app.jar
+COPY --from=build /app/target/path-*.jar app.jar
 RUN mkdir -p /app/data
 ENV PORT=8080
 EXPOSE 8080

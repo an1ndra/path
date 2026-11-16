@@ -1,5 +1,7 @@
 # Path
 
+[![CI](https://github.com/an1ndra/path/actions/workflows/ci.yml/badge.svg)](https://github.com/an1ndra/path/actions/workflows/ci.yml)
+[![Release](https://github.com/an1ndra/path/actions/workflows/release.yml/badge.svg)](https://github.com/an1ndra/path/actions/workflows/release.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 An OpenAI-compatible LLM gateway in the mould of OpenRouter: one API in front of many

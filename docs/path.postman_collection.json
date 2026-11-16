@@ -1,0 +1,1158 @@
+{
+  "info": {
+    "name": "Path \u2014 LLM gateway",
+    "description": "Public OpenAI-compatible surface plus the admin API.\n\n1. Set `baseUrl` and `adminToken` in the environment.\n2. Run **00 \u00b7 Setup** first: it mints an API key into `apiKey`.\n3. Then any Chat request.\n\nChat needs either a real provider credential or the mock upstream (`python3 tools/mock-upstream.py 9099`, with providers pointed at it).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "model",
+      "value": "gpt-4o-mini"
+    },
+    {
+      "key": "publicModel",
+      "value": "fast"
+    },
+    {
+      "key": "providerId",
+      "value": "1"
+    },
+    {
+      "key": "createdProviderId",
+      "value": ""
+    },
+    {
+      "key": "createdRouteId",
+      "value": ""
+    },
+    {
+      "key": "keyId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 \u00b7 Setup",
+      "item": [
+        {
+          "name": "Create API key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keys"
+              ]
+            },
+            "description": "Mints a client key and stores it in `apiKey`. The plaintext is returned once; every later chat request depends on it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"postman-{{$timestamp}}\",\n  \"credit_limit_usd\": 5,\n  \"rpm_limit\": 120\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set(\"apiKey\", json.key);",
+                  "pm.collectionVariables.set(\"keyId\", json.id);",
+                  "pm.test(\"key returned once\", () => pm.expect(json.key).to.match(/^sk-gw-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "providers"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"at least one provider\", () => pm.expect(json.length).to.be.above(0));",
+                  "if (json.length) pm.collectionVariables.set(\"providerId\", json[0].id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 \u00b7 Health & catalogue",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"UP\", () => pm.expect(pm.response.json().status).to.eql(\"UP\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/models",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "models"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"catalogue is a list\", () => pm.expect(json.data).to.be.an(\"array\"));",
+                  "pm.test(\"has at least one model\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get one model",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/models/{{model}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "models",
+                "{{model}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"id matches\", () => pm.expect(json.id).to.eql(pm.collectionVariables.get(\"model\")));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 \u00b7 Chat",
+      "item": [
+        {
+          "name": "Chat \u2014 non-streaming",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hi in five words.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has content\", () => pm.expect(json.choices[0].message.content).to.be.a(\"string\"));",
+                  "pm.test(\"model echoed as public id\", () => pm.expect(json.model).to.eql(pm.collectionVariables.get(\"model\")));",
+                  "pm.test(\"provider header present\", () => pm.expect(pm.response.headers.get(\"X-Gateway-Provider\")).to.be.a(\"string\"));",
+                  "pm.test(\"cost header is numeric\", () => pm.expect(Number(pm.response.headers.get(\"X-Gateway-Cost-Usd\"))).to.be.at.least(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat \u2014 streaming",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "description": "Open the Postman console to inspect the SSE frames. The response ends with `data: [DONE]`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"stream\": true,\n  \"stream_options\": {\n    \"include_usage\": true\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Count to five.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"SSE content type\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/event-stream\"));",
+                  "pm.test(\"stream ends with [DONE]\", () => pm.expect(pm.response.text()).to.include(\"[DONE]\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat \u2014 fallback chain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"models\": [\n    \"gpt-4o-mini\",\n    \"claude-3.5-haiku\"\n  ],\n  \"provider\": {\n    \"order\": [\n      \"openai\",\n      \"anthropic\"\n    ],\n    \"allow_fallbacks\": true\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"provider header tells you who served it\", () => pm.expect(pm.response.headers.get(\"X-Gateway-Provider\")).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat \u2014 tool calling",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the weather in Pune?\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Current weather for a city\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"city\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"city\"\n          ]\n        }\n      }\n    }\n  ],\n  \"tool_choice\": \"auto\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat \u2014 Anthropic route",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"claude-3.5-haiku\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Be terse.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 \u00b7 Usage & credits",
+      "item": [
+        {
+          "name": "My usage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/usage?window=24h",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "usage"
+              ],
+              "query": [
+                {
+                  "key": "window",
+                  "value": "24h"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has cost\", () => pm.expect(json.cost_usd).to.exist);",
+                  "pm.test(\"requests counted\", () => pm.expect(json.requests).to.be.at.least(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My credits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/credits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "credits"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"currency USD\", () => pm.expect(json.currency).to.eql(\"USD\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 \u00b7 Admin \u2014 providers",
+      "item": [
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "providers"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"array\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "providers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"postman-{{$timestamp}}\",\n  \"display_name\": \"Postman test\",\n  \"type\": \"OPENAI\",\n  \"base_url\": \"https://api.together.xyz/v1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set(\"createdProviderId\", json.id);",
+                  "pm.test(\"credential state reported\", () => pm.expect(json.credential_configured).to.be.a(\"boolean\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update provider",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers/{{createdProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "providers",
+                "{{createdProviderId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Postman test (updated)\",\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers/{{createdProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "providers",
+                "{{createdProviderId}}"
+              ]
+            },
+            "description": "Removes the throwaway provider created above."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 \u00b7 Admin \u2014 routes",
+      "item": [
+        {
+          "name": "List routes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/routes?model={{publicModel}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "routes"
+              ],
+              "query": [
+                {
+                  "key": "model",
+                  "value": "{{publicModel}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create route",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/routes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "routes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"public_model_id\": \"postman-route-{{$timestamp}}\",\n  \"provider_id\": \"{{providerId}}\",\n  \"upstream_model_id\": \"meta-llama/llama-4-scout-17b-16e-instruct\",\n  \"input_price_per_million\": 0.11,\n  \"output_price_per_million\": 0.34,\n  \"priority\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"createdRouteId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update route",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/routes/{{createdRouteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "routes",
+                "{{createdRouteId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": 2,\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete route",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/routes/{{createdRouteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "routes",
+                "{{createdRouteId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 \u00b7 Admin \u2014 keys",
+      "item": [
+        {
+          "name": "List keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keys"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"array\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Top up key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keys/{{keyId}}/topup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keys",
+                "{{keyId}}",
+                "topup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount_usd\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"limit grew\", () => pm.expect(pm.response.json().credit_limit_usd).to.be.above(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keys/{{keyId}}/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keys",
+                "{{keyId}}",
+                "revoke"
+              ]
+            },
+            "description": "Run last: the setup key stops working after this."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"disabled\", () => pm.expect(pm.response.json().enabled).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 \u00b7 Admin \u2014 reporting",
+      "item": [
+        {
+          "name": "Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/stats?window=24h",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "window",
+                  "value": "24h"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"has latency\", () => pm.expect(pm.response.json().latency_ms).to.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Usage rows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/usage?window=24h&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "usage"
+              ],
+              "query": [
+                {
+                  "key": "window",
+                  "value": "24h"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync models",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/models/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "models",
+                "sync"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"reports counts\", () => pm.expect(pm.response.json().created).to.be.a(\"number\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

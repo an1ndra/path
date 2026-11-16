@@ -13,6 +13,15 @@ Clients speak the OpenAI chat-completions shape because that is what most SDKs,
 frameworks and CLI tools already implement. The gateway translates to each provider's
 native protocol, so adding or swapping a provider never changes client code.
 
+## Documentation
+
+- [API reference](docs/API.md) — every endpoint with request/response shapes, error
+  codes and metering fields.
+- [Postman collection](docs/path.postman_collection.json) and
+  [environment](docs/path.postman_environment.json) — 26 requests over the public and
+  admin surfaces. Import both, then run **00 · Setup** to mint a key.
+- [AGENTS.md](AGENTS.md) — architecture, conventions and gotchas for contributors.
+
 ```mermaid
 flowchart LR
     C["OpenAI SDK / curl"] --> A["AuthFilter<br/>keys · RPM"]

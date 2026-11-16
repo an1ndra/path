@@ -33,6 +33,7 @@ public class DataSeeder implements ApplicationRunner {
     private final ClientKeyRepository clientKeys;
     private final ApiKeyService apiKeys;
     private final GatewayProperties props;
+    private final SeedState seedState;
 
     @Override
     @Transactional
@@ -46,6 +47,7 @@ public class DataSeeder implements ApplicationRunner {
             var created = apiKeys.create("demo-local", null, props.getDefaultRpmLimit());
             log.info("Created demo API key (no credit limit): {}", created.plaintext());
         }
+        seedState.markReady();
         log.info("Gateway ready. Admin API: {}  |  Public API: /v1/chat/completions, /v1/models",
                 props.getAdminToken() == null || props.getAdminToken().isBlank()
                         ? "disabled (set GATEWAY_ADMIN_TOKEN)"

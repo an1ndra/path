@@ -1,0 +1,188 @@
+package com.anindra.path.gateway;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.anindra.path.api.ApiException;
+import com.anindra.path.domain.ClientKey;
+import com.anindra.path.domain.Provider;
+import com.anindra.path.domain.ProviderType;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+/** Non-streaming chat completions with route fallback. */
+@Service
+@Slf4j
+public class ChatService {
+
+    public record Result(JsonNode body, String providerSlug, String upstreamModel,
+                         BigDecimal costUsd, long latencyMs) {
+    }
+
+    private final RouteResolver resolver;
+    private final ProviderCredentials credentials;
+    private final UpstreamClient upstream;
+    private final UsageService usage;
+    private final CreditGuard creditGuard;
+    private final ObjectMapper mapper;
+    private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
+
+    public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
+                       UsageService usage, CreditGuard creditGuard, ObjectMapper mapper,
+                       List<ProviderAdapter> adapterList) {
+        this.resolver = resolver;
+        this.credentials = credentials;
+        this.upstream = upstream;
+        this.usage = usage;
+        this.creditGuard = creditGuard;
+        this.mapper = mapper;
+        adapterList.forEach(a -> adapters.put(a.type(), a));
+    }
+
+    public Result complete(ChatRequestSpec spec, ClientKey key) {
+        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec);
+        creditGuard.check(key, spec, chain.get(0));
+
+        List<String> failures = new ArrayList<>();
+        ApiException lastError = null;
+        long started = System.nanoTime();
+        int attempts = 0;
+        String fallbackFrom = null;
+
+        for (int i = 0; i < chain.size(); i++) {
+            RouteResolver.ResolvedRoute rr = chain.get(i);
+            ProviderAdapter adapter = adapterFor(rr.provider());
+            String apiKey = credentials.apiKey(rr.provider());
+            attempts++;
+
+            if (apiKey == null) {
+                lastError = ApiException.upstream(502,
+                        "Provider '" + rr.providerSlug() + "' has no API key configured.",
+                        "provider_not_configured");
+                failures.add(rr.providerSlug() + ": not configured");
+                fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
+                continue;
+            }
+
+            try {
+                UpstreamRequest request = adapter.build(spec, rr.route(), rr.provider(), apiKey, false);
+                UpstreamClient.Response response = upstream.postJson(request.url(), request.headers(), request.body());
+
+                if (!response.ok()) {
+                    UpstreamException failure = UpstreamClient.mapError(response.status(), response.body());
+                    log.warn("Upstream {} -> {}: {}", rr.providerSlug(), failure.status(), failure.getMessage());
+                    if (failure.retryable() && i < chain.size() - 1) {
+                        failures.add(rr.providerSlug() + ": " + failure.getMessage());
+                        lastError = toApiException(failure);
+                        fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
+                        continue;
+                    }
+                    lastError = toApiException(failure);
+                    long latency = elapsedMs(started);
+                    usage.recordError(key, spec, rr.providerSlug(), rr.route().getUpstreamModelId(),
+                            latency, false, attempts, lastError.code(), lastError.getMessage());
+                    throw lastError;
+                }
+
+                JsonNode upstreamJson = mapper.readTree(response.body());
+                JsonNode normalized = adapter.parseFullResponse(upstreamJson, spec, rr.route());
+
+                TokenUsage tokens = adapter.parseUsage(upstreamJson);
+                if (!tokens.reported()) {
+                    tokens = estimate(spec, normalized);
+                }
+
+                String requestId = firstNonBlank(
+                        response.header("x-request-id"),
+                        response.header("request-id"),
+                        response.header("openai-request-id"),
+                        normalized.path("id").asText(null));
+                String finishReason = normalized.path("choices").path(0).path("finish_reason").asText(null);
+
+                long latency = elapsedMs(started);
+                BigDecimal cost = usage.recordSuccess(key, spec, rr, tokens,
+                        UsageService.CallMeta.nonStream(latency, requestId, finishReason, attempts, fallbackFrom));
+                return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost, latency);
+
+            } catch (IOException e) {
+                lastError = ApiException.upstream(502,
+                        "Could not reach " + rr.providerSlug() + ": " + e.getMessage(), "upstream_network_error");
+                failures.add(rr.providerSlug() + ": " + e.getMessage());
+                fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
+                if (i == chain.size() - 1) {
+                    break;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw ApiException.upstream(502, "Request interrupted", "upstream_interrupted");
+            }
+        }
+
+        if (lastError == null) {
+            lastError = ApiException.upstream(502, "All upstream routes failed.", "all_providers_failed");
+        } else if (!failures.isEmpty()) {
+            lastError = new ApiException(lastError.status(), lastError.type(), lastError.code(),
+                    lastError.getMessage() + " (routes tried: " + String.join("; ", failures) + ")");
+        }
+        usage.recordError(key, spec, null, null, elapsedMs(started), false, attempts,
+                lastError.code(), lastError.getMessage());
+        throw lastError;
+    }
+
+    /** Used only when a provider returns no usage block at all. */
+    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized) {
+        int prompt = spec.estimatePromptTokens();
+        JsonNode content = normalized.path("choices").path(0).path("message").path("content");
+        int completion = content.isTextual() ? Math.max(1, content.asText().length() / 4) : 0;
+        return TokenUsage.estimated(prompt, completion);
+    }
+
+    private ProviderAdapter adapterFor(Provider provider) {
+        ProviderAdapter adapter = adapters.get(provider.getType());
+        if (adapter == null) {
+            throw ApiException.upstream(500, "No adapter for provider type " + provider.getType(),
+                    "adapter_missing");
+        }
+        return adapter;
+    }
+
+    static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    public static ApiException toApiException(UpstreamException e) {
+        int status = e.status();
+        if (status == 400 || status == 422) {
+            return new ApiException(400, "invalid_request_error", "upstream_invalid_request", e.getMessage());
+        }
+        if (status == 401 || status == 403) {
+            return new ApiException(502, "upstream_error", "provider_auth_error",
+                    "Upstream rejected the gateway credential: " + e.getMessage());
+        }
+        if (status == 404) {
+            return ApiException.notFound(e.getMessage(), "model_not_found");
+        }
+        if (status == 429) {
+            return ApiException.rateLimited("Upstream rate limit hit: " + e.getMessage(), 5);
+        }
+        if (status == 408) {
+            return new ApiException(504, "upstream_error", "upstream_timeout", e.getMessage());
+        }
+        return new ApiException(502, "upstream_error", "upstream_error", e.getMessage());
+    }
+
+    static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
+    }
+}

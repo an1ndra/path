@@ -5,37 +5,16 @@ anyone reading the repo rather than the issue tracker.
 
 ## Open stories
 
-From the post-0.1.0 audit. Severity is the reviewer's call, not a promise.
-
-### Security
-
-| # | Story | Severity |
+| # | Story | Why it matters |
 |---|---|---|
-| [#39](https://github.com/an1ndra/path/issues/39) | 500 responses leak internal exception messages | high |
-| [#41](https://github.com/an1ndra/path/issues/41) | Demo API key enabled by default, including the prod profile | high |
-| [#40](https://github.com/an1ndra/path/issues/40) | Request size limit bypassable with chunked encoding | medium |
-| [#42](https://github.com/an1ndra/path/issues/42) | Admin API has no rate limit or lockout | medium |
-| [#43](https://github.com/an1ndra/path/issues/43) | No master-key rotation path | medium |
-| [#51](https://github.com/an1ndra/path/issues/51) | OpenAPI document served without authentication | low |
+| [#62](https://github.com/an1ndra/path/issues/62) | Spring AI `ChatModel` adapter module | a JVM-native gateway a Spring AI app cannot use is not much of a JVM gateway; also gives the published artifact a reason to exist |
+| [#63](https://github.com/an1ndra/path/issues/63) | Adaptive routing by latency and cost | routing is static today, so a slow-but-alive provider keeps the traffic until it 5xxs |
+| [#64](https://github.com/an1ndra/path/issues/64) | End-user attribution and budgets | a key and a project are operator concepts; without an end-user axis the gateway cannot bill a product's own customers |
+| [#61](https://github.com/an1ndra/path/issues/61) | Retention and partitioning for `usage_records` | retention shipped; monthly partitioning has not |
+| [#59](https://github.com/an1ndra/path/issues/59) | Publish to Maven Central | needs a verified namespace, a GPG key and a Portal token |
 
-### Billing
-
-| # | Story | Severity |
-|---|---|---|
-| [#38](https://github.com/an1ndra/path/issues/38) | Model sync publishes unpriced, enabled routes (free inference) | high |
-| [#44](https://github.com/an1ndra/path/issues/44) | Worst-case reservation can reject a request that would fit | medium |
-
-### API and operations
-
-| # | Story | Severity |
-|---|---|---|
-| [#45](https://github.com/an1ndra/path/issues/45) | Project filters missing from `/admin/usage`, `/admin/stats`, CSV export | low |
-| [#46](https://github.com/an1ndra/path/issues/46) | In-memory rate-limit windows are never evicted | low |
-| [#49](https://github.com/an1ndra/path/issues/49) | Release tags are not verified to be on `main` | medium |
-| [#50](https://github.com/an1ndra/path/issues/50) | `UpstreamClient` allocates an `ObjectMapper` per error | low |
-
-Closed as already delivered: #47 (shared rate limiting, shipped in #20) and #48 (circuit
-breaker, shipped in #11).
+Everything else from the post-0.1.0 audit (#38–#51) is closed and shipped in `93ae278`;
+see Delivered below.
 
 ## Delivered
 
@@ -48,6 +27,8 @@ breaker, shipped in #11).
 | Features | exact-match response cache (streaming included), embeddings, opt-in redacted prompt logging, nightly provider canary |
 | Scale and tenancy | Valkey-backed shared RPM limiter, database budget reservations, projects, scoped admin tokens |
 | Assurance | Jazzer fuzzing of the request parser, property tests for translation invariants |
+| Post-0.1.0 audit | all twelve fixes (#38–#51): unpriced routes disabled, generic 500s with a reference id, chunked-body limits, admin auth limiter, master-key rotation, `projectId` filters, tag-on-main guard |
+| Runnability | `tools/demo.sh` (60-second tour against the mock), `docs/WHY-PATH.md` |
 
 ## How to pick one up
 

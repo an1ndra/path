@@ -35,6 +35,12 @@ public class Project {
     @Column(precision = 18, scale = 6)
     private BigDecimal monthlyLimitUsd;
 
+    /** Requests per minute across every key in the project; null means unlimited. */
+    private Integer rpmLimit;
+
+    /** In-flight requests across the project; null means unlimited. */
+    private Integer maxConcurrentRequests;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 

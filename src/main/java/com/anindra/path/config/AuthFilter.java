@@ -33,6 +33,8 @@ import java.security.MessageDigest;
 public class AuthFilter extends OncePerRequestFilter {
 
     public static final String CLIENT_KEY_ATTR = "gateway.clientKey";
+    /** Project concurrency cap for the resolved key, or absent when unlimited. */
+    public static final String PROJECT_CONCURRENCY_ATTR = "gateway.projectConcurrency";
     public static final String ADMIN_PRINCIPAL_ATTR = "gateway.adminPrincipal";
 
     private final ApiKeyService apiKeys;
@@ -40,6 +42,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private final com.anindra.path.admin.TenancyService tenancy;
     private final AdminAuthLimiter adminAuthLimiter;
     private final GatewayProperties props;
+    private final com.anindra.path.repo.ProjectRepository projects;
     private final ObjectMapper mapper;
 
     @Override
@@ -70,11 +73,39 @@ public class AuthFilter extends OncePerRequestFilter {
                             "Rate limit exceeded (" + key.getRpmLimit() + " requests/minute). Retry in "
                                     + retryAfter + "s.", retryAfter);
                 }
+                enforceProjectLimit(request, key);
                 request.setAttribute(CLIENT_KEY_ATTR, key);
             }
             chain.doFilter(request, response);
         } catch (ApiException e) {
             writeError(response, e);
+        }
+    }
+
+    /**
+     * A project cap sits above the per-key one: forty keys at 120 rpm should still be
+     * bounded by whatever the project allows. The concurrency cap is stashed on the
+     * request because only the controller can hold a permit for the life of a stream.
+     */
+    private void enforceProjectLimit(HttpServletRequest request, ClientKey key) {
+        if (key.getProjectId() == null) {
+            return;
+        }
+        com.anindra.path.domain.Project project = projects.findById(key.getProjectId()).orElse(null);
+        if (project == null) {
+            return;
+        }
+        Integer projectRpm = project.getRpmLimit();
+        if (projectRpm != null && projectRpm > 0) {
+            int retryAfter = rateLimiter.acquire("project:" + project.getId(), projectRpm);
+            if (retryAfter > 0) {
+                throw ApiException.rateLimited(
+                        "Project '" + project.getSlug() + "' rate limit exceeded (" + projectRpm
+                                + " requests/minute). Retry in " + retryAfter + "s.", retryAfter);
+            }
+        }
+        if (project.getMaxConcurrentRequests() != null && project.getMaxConcurrentRequests() > 0) {
+            request.setAttribute(PROJECT_CONCURRENCY_ATTR, project.getMaxConcurrentRequests());
         }
     }
 

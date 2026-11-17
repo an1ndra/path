@@ -71,8 +71,10 @@ public class ChatCompletionsController {
         try {
             int limit = key.getMaxConcurrentRequests() != null
                     ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
-            if (!concurrency.tryAcquire(key.getId(), limit)) {
-                throw ApiException.tooManyConcurrent(limit);
+            Integer projectLimit = (Integer) request.getAttribute(AuthFilter.PROJECT_CONCURRENCY_ATTR);
+            if (!concurrency.tryAcquire(key, limit, projectLimit)) {
+                throw ApiException.tooManyConcurrent(
+                        projectLimit != null && projectLimit > 0 ? projectLimit : limit);
             }
             try {
                 Span span = tracer.nextSpan().name("chat.completions").start();
@@ -84,7 +86,7 @@ public class ChatCompletionsController {
                     span.end();
                 }
             } finally {
-                concurrency.release(key.getId());
+                concurrency.release(key);
             }
         } finally {
             drain.end();
@@ -234,8 +236,10 @@ public class ChatCompletionsController {
         try {
             int limit = key.getMaxConcurrentRequests() != null
                     ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
-            if (!concurrency.tryAcquire(key.getId(), limit)) {
-                throw ApiException.tooManyConcurrent(limit);
+            Integer projectLimit = (Integer) request.getAttribute(AuthFilter.PROJECT_CONCURRENCY_ATTR);
+            if (!concurrency.tryAcquire(key, limit, projectLimit)) {
+                throw ApiException.tooManyConcurrent(
+                        projectLimit != null && projectLimit > 0 ? projectLimit : limit);
             }
             try {
                 var result = embeddings.embed(body, key);
@@ -252,7 +256,7 @@ public class ChatCompletionsController {
                 abandon(idempotencyKey, key);
                 throw e;
             } finally {
-                concurrency.release(key.getId());
+                concurrency.release(key);
             }
         } finally {
             drain.end();
@@ -264,7 +268,8 @@ public class ChatCompletionsController {
     @PostMapping("/tokens/count")
     public Map<String, Object> tokenCount(
             @RequestBody ObjectNode body,
-            @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key) {
+            @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key,
+            HttpServletRequest request) {
         if (key == null) {
             throw ApiException.unauthorized(
                     "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
@@ -273,13 +278,15 @@ public class ChatCompletionsController {
         try {
             int limit = key.getMaxConcurrentRequests() != null
                     ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
-            if (!concurrency.tryAcquire(key.getId(), limit)) {
-                throw ApiException.tooManyConcurrent(limit);
+            Integer projectLimit = (Integer) request.getAttribute(AuthFilter.PROJECT_CONCURRENCY_ATTR);
+            if (!concurrency.tryAcquire(key, limit, projectLimit)) {
+                throw ApiException.tooManyConcurrent(
+                        projectLimit != null && projectLimit > 0 ? projectLimit : limit);
             }
             try {
                 return tokenCount.count(body, key);
             } finally {
-                concurrency.release(key.getId());
+                concurrency.release(key);
             }
         } finally {
             drain.end();

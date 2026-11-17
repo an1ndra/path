@@ -18,6 +18,10 @@
 - **Budgets have three windows.** A key carries a lifetime credit limit plus
   `daily_limit_usd` and `monthly_limit_usd`, both checked against stored spend before the
   call.
+- **Project limits sit above key limits.** A project can carry `rpm_limit` and
+  `max_concurrent_requests`, enforced in addition to the key's own caps: a request must
+  pass both. A project limit of `0` means unlimited. The 429 names which cap was hit
+  ("Project 'acme' rate limit exceeded").
 - **Limits are enforced before the call.** `max_concurrent_requests` in flight per key
   (default 8) and bodies above `max-request-bytes` rejected with 413 before Jackson reads
   them.

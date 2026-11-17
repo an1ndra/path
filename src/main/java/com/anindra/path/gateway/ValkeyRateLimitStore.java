@@ -29,11 +29,11 @@ public class ValkeyRateLimitStore implements RateLimitStore {
     }
 
     @Override
-    public int acquire(Long keyId, int rpmLimit) {
+    public int acquire(String bucket, int rpmLimit) {
         if (rpmLimit <= 0) {
             return 0;
         }
-        String redisKey = prefix + ":rpm:" + keyId;
+        String redisKey = prefix + ":rpm:" + bucket;
         Long count = redis.execute(INCR_WITH_TTL, List.of(redisKey));
         if (count == null || count <= rpmLimit) {
             return 0;

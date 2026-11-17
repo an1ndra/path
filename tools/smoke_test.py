@@ -516,6 +516,46 @@ def main():
         status, _, csv_bytes = req("GET", f"/admin/usage/export?projectId={project['id']}&window=1h", admin=True)
         check("export can be scoped to a project", status == 200 and b"created_at" in csv_bytes, str(status))
 
+        # ------------------------------------------------- project rate limits
+        status, _, second_key = jreq("POST", "/admin/keys",
+                                     {"name": "project-key-2", "project_id": project["id"]}, admin=True)
+        check("a project can own several keys", status == 200 and second_key.get("key"), str(status))
+
+        # the project budget test earlier set a 0.000001 daily cap: lift it first
+        jreq("PATCH", f"/admin/projects/{project['id']}",
+             {"daily_limit_usd": 1000, "monthly_limit_usd": 1000,
+              "rpm_limit": 2, "max_concurrent_requests": 8}, admin=True)
+        codes = []
+        for _ in range(3):
+            code, _, _ = jreq("POST", "/v1/chat/completions",
+                              {"model": "gpt-4o-mini",
+                               "messages": [{"role": "user", "content": "hi"}]},
+                              key=second_key.get("key"))
+            codes.append(code)
+        check("project rpm caps every key in the project",
+              codes[:2] == [200, 200] and codes[2] == 429, str(codes))
+
+        status, _, limited = jreq("POST", "/v1/chat/completions",
+                                  {"model": "gpt-4o-mini",
+                                   "messages": [{"role": "user", "content": "hi"}]},
+                                  key=second_key.get("key"))
+        check("the 429 names the project limit",
+              status == 429 and "Project" in limited.get("error", {}).get("message", ""),
+              str(limited)[:120])
+
+        jreq("PATCH", f"/admin/projects/{project['id']}",
+             {"daily_limit_usd": 1000, "monthly_limit_usd": 1000, "rpm_limit": 0}, admin=True)
+        status, _, _ = jreq("POST", "/v1/chat/completions",
+                            {"model": "gpt-4o-mini",
+                             "messages": [{"role": "user", "content": "hi"}]},
+                            key=second_key.get("key"))
+        check("zero project rpm means unlimited", status == 200, str(status))
+
+        _, _, refreshed = jreq("GET", "/admin/projects", admin=True)
+        row = next((p for p in refreshed if p["id"] == project["id"]), {})
+        check("project limits are reported by the admin API",
+              "rpm_limit" in row and "max_concurrent_requests" in row, str(row)[:200])
+
     # -------------------------------------------------------- master key rotation
     import base64 as _b64
     new_master = _b64.b64encode(b"0123456789abcdef0123456789abcdef").decode()

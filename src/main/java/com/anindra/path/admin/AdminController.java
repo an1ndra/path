@@ -128,7 +128,10 @@ public class AdminController {
     public record ProjectInput(String slug, String name,
                                @com.fasterxml.jackson.annotation.JsonAlias("creditLimitUsd") java.math.BigDecimal creditLimitUsd,
                                @com.fasterxml.jackson.annotation.JsonAlias("dailyLimitUsd") java.math.BigDecimal dailyLimitUsd,
-                               @com.fasterxml.jackson.annotation.JsonAlias("monthlyLimitUsd") java.math.BigDecimal monthlyLimitUsd) {
+                               @com.fasterxml.jackson.annotation.JsonAlias("monthlyLimitUsd") java.math.BigDecimal monthlyLimitUsd,
+                               @com.fasterxml.jackson.annotation.JsonAlias("rpmLimit") Integer rpmLimit,
+                               @com.fasterxml.jackson.annotation.JsonAlias("maxConcurrentRequests")
+                               Integer maxConcurrentRequests) {
     }
 
     public record TokenInput(String name, String scopes) {
@@ -142,7 +145,8 @@ public class AdminController {
     @PostMapping("/projects")
     public Map<String, Object> createProject(@RequestBody ProjectInput input) {
         var created = tenancy.createProject(input.slug(), input.name(),
-                input.creditLimitUsd(), input.dailyLimitUsd(), input.monthlyLimitUsd());
+                input.creditLimitUsd(), input.dailyLimitUsd(), input.monthlyLimitUsd(),
+                input.rpmLimit(), input.maxConcurrentRequests());
         audit.record("project.create", "project:" + created.get("id"), input);
         return created;
     }
@@ -150,7 +154,8 @@ public class AdminController {
     @PatchMapping("/projects/{id}")
     public Map<String, Object> updateProject(@PathVariable Long id, @RequestBody ProjectInput input) {
         var updated = tenancy.updateProjectLimits(id, input.creditLimitUsd(),
-                input.dailyLimitUsd(), input.monthlyLimitUsd());
+                input.dailyLimitUsd(), input.monthlyLimitUsd(),
+                input.rpmLimit(), input.maxConcurrentRequests());
         audit.record("project.update", "project:" + id, input);
         return updated;
     }

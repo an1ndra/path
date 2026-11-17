@@ -31,10 +31,10 @@ class TenancyServiceTest {
 
     @Test
     void createsProjectsAndRejectsDuplicates() {
-        var created = tenancy.createProject("team-a", "Team A", null, null, null);
+        var created = tenancy.createProject("team-a", "Team A", null, null, null, null, null);
         assertThat(created.get("slug")).isEqualTo("team-a");
 
-        assertThatThrownBy(() -> tenancy.createProject("team-a", "Again", null, null, null))
+        assertThatThrownBy(() -> tenancy.createProject("team-a", "Again", null, null, null, null, null))
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "project_exists");
     }

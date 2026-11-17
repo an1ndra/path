@@ -62,6 +62,8 @@ public class TenancyService {
         out.put("credit_limit_usd", project.getCreditLimitUsd());
         out.put("daily_limit_usd", project.getDailyLimitUsd());
         out.put("monthly_limit_usd", project.getMonthlyLimitUsd());
+        out.put("rpm_limit", project.getRpmLimit());
+        out.put("max_concurrent_requests", project.getMaxConcurrentRequests());
         return out;
     }
 
@@ -76,6 +78,8 @@ public class TenancyService {
             row.put("credit_limit_usd", project.getCreditLimitUsd());
             row.put("daily_limit_usd", project.getDailyLimitUsd());
             row.put("monthly_limit_usd", project.getMonthlyLimitUsd());
+            row.put("rpm_limit", project.getRpmLimit());
+            row.put("max_concurrent_requests", project.getMaxConcurrentRequests());
             row.put("key_count", keys.findByProjectIdOrderByCreatedAtDesc(project.getId()).size());
             out.add(row);
         }
@@ -86,7 +90,8 @@ public class TenancyService {
     public Map<String, Object> createProject(String slug, String name,
                                              java.math.BigDecimal creditLimit,
                                              java.math.BigDecimal dailyLimit,
-                                             java.math.BigDecimal monthlyLimit) {
+                                             java.math.BigDecimal monthlyLimit,
+                                             Integer rpmLimit, Integer maxConcurrentRequests) {
         if (slug == null || slug.isBlank()) {
             throw ApiException.badRequest("slug is required", "slug");
         }
@@ -99,6 +104,8 @@ public class TenancyService {
         project.setCreditLimitUsd(creditLimit);
         project.setDailyLimitUsd(dailyLimit);
         project.setMonthlyLimitUsd(monthlyLimit);
+        project.setRpmLimit(positive(rpmLimit, "rpm_limit"));
+        project.setMaxConcurrentRequests(positive(maxConcurrentRequests, "max_concurrent_requests"));
         projects.save(project);
         return listProjects().stream()
                 .filter(p -> project.getId().equals(p.get("id")))
@@ -108,7 +115,8 @@ public class TenancyService {
     @Transactional
     public Map<String, Object> updateProjectLimits(Long id, java.math.BigDecimal creditLimit,
                                                    java.math.BigDecimal dailyLimit,
-                                                   java.math.BigDecimal monthlyLimit) {
+                                                   java.math.BigDecimal monthlyLimit,
+                                                   Integer rpmLimit, Integer maxConcurrentRequests) {
         Project project = projects.findById(id)
                 .orElseThrow(() -> ApiException.notFound("No project with id " + id, "project_not_found"));
         if (creditLimit != null) {
@@ -120,8 +128,25 @@ public class TenancyService {
         if (monthlyLimit != null) {
             project.setMonthlyLimitUsd(monthlyLimit);
         }
+        if (rpmLimit != null) {
+            project.setRpmLimit(positive(rpmLimit, "rpm_limit"));
+        }
+        if (maxConcurrentRequests != null) {
+            project.setMaxConcurrentRequests(positive(maxConcurrentRequests, "max_concurrent_requests"));
+        }
         projects.save(project);
         return projectSummary(id);
+    }
+
+    /** 0 means unlimited, so only negatives are rejected. */
+    private static Integer positive(Integer value, String field) {
+        if (value == null) {
+            return null;
+        }
+        if (value < 0) {
+            throw ApiException.badRequest("'" + field + "' cannot be negative.", field);
+        }
+        return value;
     }
 
     @Transactional

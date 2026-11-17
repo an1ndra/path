@@ -13,16 +13,16 @@ public class InMemoryRateLimitStore implements RateLimitStore {
     private record Window(long minute, int used) {
     }
 
-    private final Map<Long, Window> windows = new ConcurrentHashMap<>();
+    private final Map<String, Window> windows = new ConcurrentHashMap<>();
 
     @Override
-    public int acquire(Long keyId, int rpmLimit) {
+    public int acquire(String bucket, int rpmLimit) {
         if (rpmLimit <= 0) {
             return 0;
         }
         long minute = Instant.now().getEpochSecond() / 60;
         int[] retryAfter = {0};
-        windows.compute(keyId, (id, current) -> {
+        windows.compute(bucket, (id, current) -> {
             if (current == null || current.minute() != minute) {
                 return new Window(minute, 1);
             }

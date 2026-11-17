@@ -65,10 +65,12 @@ public class ApiKeyService {
         // One error for every rejection. Distinct codes for missing/invalid/disabled turned
         // this into a key-validity oracle: an attacker could tell a well-formed-but-unknown
         // key from a revoked one, and 193k guesses were evaluated against it at ~474/s.
-        if (raw == null || raw.isBlank()) {
-            throw invalidKey();
-        }
-        ClientKey key = findByRawKey(raw.trim()).orElseThrow(ApiKeyService::invalidKey);
+        //
+        // The lookup runs even for a missing key, so the work is the same shape whatever was
+        // sent. Skipping it made "no header" measurably faster than "wrong key", which is a
+        // timing oracle of its own even though the bodies are now identical.
+        ClientKey key = findByRawKey(raw == null ? "" : raw.trim())
+                .orElseThrow(ApiKeyService::invalidKey);
         if (!key.isEnabled() || key.getRevokedAt() != null) {
             throw invalidKey();
         }

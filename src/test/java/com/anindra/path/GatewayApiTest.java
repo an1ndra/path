@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -144,6 +145,20 @@ class GatewayApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths").exists())
                 .andExpect(jsonPath("$.paths['/v1/chat/completions']").exists());
+    }
+
+    @Test
+    void everyKeyRejectionIsByteForByteIdentical() throws Exception {
+        String missing = mvc.perform(get("/v1/models"))
+                .andExpect(status().isUnauthorized())
+                .andReturn().getResponse().getContentAsString();
+        String invalid = mvc.perform(get("/v1/models")
+                        .header("Authorization", "Bearer sk-gw-nope"))
+                .andExpect(status().isUnauthorized())
+                .andReturn().getResponse().getContentAsString();
+
+        // An attacker must not be able to tell "no key" from "wrong key" from the body.
+        assertThat(invalid).isEqualTo(missing);
     }
 
     @Test

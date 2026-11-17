@@ -49,7 +49,12 @@ public class UpstreamClient {
 
     public Response postJson(String url, Map<String, String> headers, String body)
             throws IOException, InterruptedException {
-        HttpRequest.Builder b = base(url, props.getRequestTimeout())
+        return postJson(url, headers, body, props.getRequestTimeout());
+    }
+
+    public Response postJson(String url, Map<String, String> headers, String body, Duration timeout)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = base(url, timeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         headers.forEach(b::header);

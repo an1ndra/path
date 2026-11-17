@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -111,7 +112,11 @@ public class ChatService {
 
             try {
                 UpstreamRequest request = adapter.build(spec, rr.route(), rr.provider(), apiKey, false);
-                UpstreamClient.Response response = upstream.postJson(request.url(), request.headers(), request.body());
+                Duration timeout = rr.provider().getRequestTimeoutMs() != null
+                        ? Duration.ofMillis(rr.provider().getRequestTimeoutMs())
+                        : props.getRequestTimeout();
+                UpstreamClient.Response response = upstream.postJson(
+                        request.url(), request.headers(), request.body(), timeout);
 
                 if (!response.ok()) {
                     UpstreamException failure = UpstreamClient.mapError(

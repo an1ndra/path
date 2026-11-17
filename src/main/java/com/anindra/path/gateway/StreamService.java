@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
@@ -157,8 +158,11 @@ public class StreamService {
                             stream.headers().get("openai-request-id"));
                 }
 
+                Duration idleTimeout = provider.getStreamIdleTimeoutMs() != null
+                        ? Duration.ofMillis(provider.getStreamIdleTimeoutMs())
+                        : props.getStreamIdleTimeout();
                 while (true) {
-                    String line = stream.poll(props.getStreamIdleTimeout());
+                    String line = stream.poll(idleTimeout);
                     if (line == null) {
                         break;
                     }
@@ -236,7 +240,9 @@ public class StreamService {
             } catch (TimeoutException e) {
                 breaker.onFailure(providerId);
                 lastError = new ApiException(504, "upstream_error", "upstream_timeout",
-                        "The upstream sent nothing for " + props.getStreamIdleTimeout().toSeconds() + "s.");
+                        "The upstream sent nothing for " + (provider.getStreamIdleTimeoutMs() != null
+                                ? provider.getStreamIdleTimeoutMs() / 1000 + "s"
+                                : props.getStreamIdleTimeout().toSeconds() + "s") + ".");
                 if (!committed && i < chain.size() - 1) {
                     failures.add(provider.getSlug() + ": idle timeout");
                     fallbackFrom = fallbackFrom == null ? provider.getSlug() : fallbackFrom;

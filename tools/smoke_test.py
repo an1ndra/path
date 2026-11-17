@@ -294,6 +294,35 @@ def main():
           status == 422 and body.get("error", {}).get("code") == "unsupported_parameter",
           str(status) + str(body)[:120])
 
+    # ----------------------------------------------------------------- budgets
+    _, _, daily = jreq("POST", "/admin/keys",
+                       {"name": "daily-key", "daily_limit_usd": 0.000001, "rpm_limit": 100}, admin=True)
+    dk = daily.get("key")
+    s1, _, _ = jreq("POST", "/v1/chat/completions",
+                    {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key=dk)
+    s2, _, b2 = jreq("POST", "/v1/chat/completions",
+                     {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key=dk)
+    check("daily budget blocks the next call",
+          s1 == 200 and s2 == 402 and "Daily budget" in b2.get("error", {}).get("message", ""),
+          f"{s1}/{s2}")
+
+    # ---------------------------------------------------------- provider probe
+    status, _, probe = jreq("POST", f"/admin/providers/{providers['openai']['id']}/probe", admin=True)
+    check("provider probe reaches the upstream",
+          status == 200 and probe.get("ok") is True and probe.get("model_count", 0) > 0,
+          str(probe)[:140])
+    status, _, health = jreq("GET", "/admin/providers/health", admin=True)
+    check("provider health summary lists circuits",
+          status == 200 and any(p.get("circuit_state") for p in health), str(status))
+
+    # ------------------------------------------------------------- usage export
+    status, _, raw_csv = req("GET", "/admin/usage/export?window=30d&limit=100", admin=True)
+    csv_text = raw_csv.decode()
+    check("usage export returns a CSV header",
+          status == 200 and csv_text.splitlines()[0].startswith("created_at,key_id"), str(status))
+    check("usage export contains rows", len(csv_text.strip().splitlines()) > 1,
+          str(len(csv_text.splitlines())))
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (48)
+# unit + integration tests (55)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (82 checks, no real keys)
+# full end-to-end suite against a mock upstream (87 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -49,6 +49,7 @@ com.anindra.path
 │   ├── IdempotencyService        Idempotency-Key claims and replay
 │   ├── ConcurrencyLimiter        per-key in-flight permits
 │   ├── ResponseCacheService      exact-match replay, opt-in per route
+│   ├── DrainState                shutdown drain + readiness
 │   ├── RouteResolver             public model id → ordered chain
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
@@ -115,7 +116,9 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 - `ConcurrencyLimiterTest` — per-key permits, no over-release.
 - `TokenEstimateTest` — real tokenization with a heuristic fallback.
 - `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
-- `tools/smoke_test.py` — 82 checks against `tools/mock-upstream.py`. The mock can
+- `CreditGuardTest` — budget windows and max_tokens clamping.
+- `DrainStateTest` — in-flight accounting and refusal while draining.
+- `tools/smoke_test.py` — 87 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -141,6 +144,12 @@ a smoke check. Never claim a fix without running both.
 - **Idempotency claims are written before the upstream call.** If the process dies
   mid-request the row stays PENDING until `GATEWAY_IDEMPOTENCY_TTL`, so retries get
   409 `idempotency_in_progress`. The purge job only removes expired rows.
+- **Spend windows use stored usage, not a counter.** `daily_limit_usd` and
+  `monthly_limit_usd` compare against `sum(cost_usd)` since UTC midnight / month start,
+  so they survive restarts and stay correct across instances.
+- **Shutdown drains for `GATEWAY_DRAIN_TIMEOUT`.** `DrainState` flips readiness and
+  refuses new chat requests while streams finish; keep the value below your orchestrator's
+  termination grace period.
 - **Rate limiting is in-memory**, one node. Running two instances doubles the effective
   RPM limit.
 - **H2 rejects `AUTO_SERVER=TRUE` together with `DB_CLOSE_ON_EXIT`.** Don't re-add it.

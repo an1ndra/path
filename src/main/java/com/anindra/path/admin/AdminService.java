@@ -36,6 +36,8 @@ public class AdminService {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ProviderInput(String slug, @JsonAlias("displayName") String displayName, String type,
                                 @JsonAlias("baseUrl") String baseUrl, @JsonAlias("apiKey") String apiKey,
+                                @JsonAlias("requestTimeoutMs") Integer requestTimeoutMs,
+                                @JsonAlias("streamIdleTimeoutMs") Integer streamIdleTimeoutMs,
                                 Boolean enabled) {
     }
 
@@ -58,6 +60,9 @@ public class AdminService {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record KeyInput(String name, @JsonAlias("creditLimitUsd") BigDecimal creditLimitUsd,
+                           @JsonAlias("dailyLimitUsd") BigDecimal dailyLimitUsd,
+                           @JsonAlias("monthlyLimitUsd") BigDecimal monthlyLimitUsd,
+                           @JsonAlias("maxOutputTokens") Integer maxOutputTokens,
                            @JsonAlias("rpmLimit") Integer rpmLimit,
                            @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
                            Boolean enabled) {
@@ -96,6 +101,8 @@ public class AdminService {
         p.setType(parseType(in.type()));
         p.setBaseUrl(requireBaseUrl(in.baseUrl()));
         p.setEnabled(in.enabled() == null || in.enabled());
+        p.setRequestTimeoutMs(in.requestTimeoutMs());
+        p.setStreamIdleTimeoutMs(in.streamIdleTimeoutMs());
         if (in.apiKey() != null && !in.apiKey().isBlank()) {
             p.setApiKeyCipher(cipher.encrypt(in.apiKey().trim()));
         }
@@ -118,6 +125,12 @@ public class AdminService {
         }
         if (in.enabled() != null) {
             p.setEnabled(in.enabled());
+        }
+        if (in.requestTimeoutMs() != null) {
+            p.setRequestTimeoutMs(in.requestTimeoutMs());
+        }
+        if (in.streamIdleTimeoutMs() != null) {
+            p.setStreamIdleTimeoutMs(in.streamIdleTimeoutMs());
         }
         if (in.apiKey() != null) {
             p.setApiKeyCipher(in.apiKey().isBlank() ? null : cipher.encrypt(in.apiKey().trim()));
@@ -146,6 +159,8 @@ public class AdminService {
         view.put("credential_source", credentials.source(p));
         view.put("credential_configured", credentials.apiKey(p) != null);
         view.put("credential_hint", credentials.hint(p));
+        view.put("request_timeout_ms", p.getRequestTimeoutMs());
+        view.put("stream_idle_timeout_ms", p.getStreamIdleTimeoutMs());
         view.put("circuit_state", breaker.state(p.getId()).name().toLowerCase());
         view.put("circuit_retry_after_seconds", breaker.retryAfterSeconds(p.getId()));
         view.put("created_at", p.getCreatedAt().toString());
@@ -322,8 +337,11 @@ public class AdminService {
         ApiKeyService.CreatedKey created = apiKeys.create(in.name(), in.creditLimitUsd(), in.rpmLimit());
         if (in.maxConcurrentRequests() != null) {
             created.key().setMaxConcurrentRequests(in.maxConcurrentRequests());
-            clientKeys.save(created.key());
         }
+        created.key().setDailyLimitUsd(in.dailyLimitUsd());
+        created.key().setMonthlyLimitUsd(in.monthlyLimitUsd());
+        created.key().setMaxOutputTokens(in.maxOutputTokens());
+        clientKeys.save(created.key());
         Map<String, Object> view = keyView(created.key());
         view.put("key", created.plaintext());
         view.put("warning", "Store this key now. It is not shown again.");
@@ -351,6 +369,15 @@ public class AdminService {
                 throw ApiException.badRequest("maxConcurrentRequests cannot be negative", "maxConcurrentRequests");
             }
             key.setMaxConcurrentRequests(in.maxConcurrentRequests());
+        }
+        if (in.dailyLimitUsd() != null) {
+            key.setDailyLimitUsd(in.dailyLimitUsd());
+        }
+        if (in.monthlyLimitUsd() != null) {
+            key.setMonthlyLimitUsd(in.monthlyLimitUsd());
+        }
+        if (in.maxOutputTokens() != null) {
+            key.setMaxOutputTokens(in.maxOutputTokens());
         }
         if (in.enabled() != null) {
             key.setEnabled(in.enabled());
@@ -392,6 +419,9 @@ public class AdminService {
         view.put("enabled", k.isEnabled());
         view.put("rpm_limit", k.getRpmLimit());
         view.put("max_concurrent_requests", k.getMaxConcurrentRequests());
+        view.put("daily_limit_usd", k.getDailyLimitUsd());
+        view.put("monthly_limit_usd", k.getMonthlyLimitUsd());
+        view.put("max_output_tokens", k.getMaxOutputTokens());
         view.put("credit_limit_usd", k.getCreditLimitUsd());
         view.put("used_usd", k.getUsedUsd());
         view.put("created_at", k.getCreatedAt().toString());

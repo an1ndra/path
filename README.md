@@ -233,7 +233,8 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 `model_not_found`, `insufficient_credits`, `rate_limit_exceeded`,
 `upstream_timeout`, `upstream_error`, `provider_auth_error`, `all_providers_failed`,
 `circuit_open`, `idempotency_conflict`, `idempotency_in_progress`,
-`concurrency_limit_exceeded`, `payload_too_large`, `unsupported_parameter`.
+`concurrency_limit_exceeded`, `payload_too_large`, `unsupported_parameter`,
+`shutting_down`.
 
 ## Configuration
 
@@ -250,6 +251,8 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests allowed per key (0 = unlimited) |
 | `GATEWAY_MAX_REQUEST_BYTES` | `1048576` | request bodies larger than this get 413 |
+| `GATEWAY_MAX_OUTPUT_TOKENS` | `0` (off) | hard cap on `max_tokens` for every request |
+| `GATEWAY_DRAIN_TIMEOUT` | `30s` | how long shutdown waits for in-flight streams |
 | `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
 | `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
@@ -318,6 +321,16 @@ python3 tools/smoke_test.py        # 49 checks
   replays the stored response — streams included — with `X-Path-Cache: hit`, billed at
   zero and reported as savings. Entries last `cache_ttl_seconds` (default 3600) and are
   scoped to the client key, so tenants cannot read each other's completions.
+- **Budgets have three windows.** A key can carry a lifetime credit limit plus
+  `daily_limit_usd` and `monthly_limit_usd`; both are checked against stored spend before
+  the call. `max_output_tokens` (per key) and `GATEWAY_MAX_OUTPUT_TOKENS` (global) clamp
+  `max_tokens` before the request is priced.
+- **Timeouts are per provider.** `request_timeout_ms` and `stream_idle_timeout_ms` on a
+  provider override the global defaults, so a slow reasoning model and a small fast one
+  can coexist.
+- **Shutdown drains instead of truncating.** On SIGTERM readiness goes DOWN, new requests
+  get 503 `shutting_down`, and in-flight streams are allowed to finish for up to
+  `GATEWAY_DRAIN_TIMEOUT`.
 - **Limits are enforced before the call.** A key may have at most
   `max_concurrent_requests` in flight (default 8, per key), and bodies above
   `max-request-bytes` are rejected with 413 before Jackson reads them.

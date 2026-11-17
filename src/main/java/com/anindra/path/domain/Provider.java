@@ -42,6 +42,11 @@ public class Provider {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Null falls back to the gateway default. */
+    private Integer requestTimeoutMs;
+
+    private Integer streamIdleTimeoutMs;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 

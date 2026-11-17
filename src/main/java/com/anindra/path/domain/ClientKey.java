@@ -40,6 +40,15 @@ public class ClientKey {
     @Column(precision = 18, scale = 6)
     private BigDecimal creditLimitUsd;
 
+    @Column(precision = 18, scale = 6)
+    private BigDecimal dailyLimitUsd;
+
+    @Column(precision = 18, scale = 6)
+    private BigDecimal monthlyLimitUsd;
+
+    /** Clamps max_tokens on every request; null leaves the client's value alone. */
+    private Integer maxOutputTokens;
+
     @Column(nullable = false, precision = 18, scale = 6)
     private BigDecimal usedUsd = BigDecimal.ZERO;
 

@@ -56,6 +56,8 @@ gateway:
   default-credit-limit-usd: ${GATEWAY_DEFAULT_CREDIT_USD:}
   default-max-concurrent: ${GATEWAY_DEFAULT_MAX_CONCURRENT:8}
   max-request-bytes: ${GATEWAY_MAX_REQUEST_BYTES:1048576}
+  max-output-tokens: ${GATEWAY_MAX_OUTPUT_TOKENS:0}
+  drain-timeout: ${GATEWAY_DRAIN_TIMEOUT:30s}
   breaker:
     failure-threshold: ${GATEWAY_BREAKER_FAILURES:5}
     open-duration: ${GATEWAY_BREAKER_OPEN:30s}

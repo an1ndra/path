@@ -16,6 +16,7 @@ public class AdminController {
     private final AdminService admin;
     private final AdminReportingService reporting;
     private final ModelSyncService modelSync;
+    private final ProviderProbeService probes;
 
     // ------------------------------------------------------------- providers
 
@@ -105,6 +106,32 @@ public class AdminController {
                                      @RequestParam(defaultValue = "24h") String window,
                                      @RequestParam(defaultValue = "100") int limit) {
         return reporting.usage(keyId, window, limit);
+    }
+
+    @PostMapping("/providers/{id}/probe")
+    public Map<String, Object> probe(@PathVariable Long id) {
+        return probes.probe(id);
+    }
+
+    @GetMapping("/providers/health")
+    public List<Map<String, Object>> providerHealth() {
+        return probes.summary();
+    }
+
+    @GetMapping(value = "/usage/export", produces = "text/csv")
+    public org.springframework.http.ResponseEntity<String> exportUsage(
+            @RequestParam(required = false) Long keyId,
+            @RequestParam(defaultValue = "30d") String window,
+            @RequestParam(defaultValue = "10000") int limit) {
+        java.time.Duration parsed = com.anindra.path.api.Durations.cap(
+                com.anindra.path.api.Durations.parse(window, java.time.Duration.ofDays(30)),
+                java.time.Duration.ofDays(365));
+        java.time.Instant to = java.time.Instant.now();
+        java.time.Instant from = to.minus(parsed);
+        String csv = reporting.usageCsv(keyId, from, to, limit);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"usage-" + to + ".csv\"")
+                .body(csv);
     }
 
     @PostMapping("/models/sync")

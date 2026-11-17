@@ -185,6 +185,11 @@ public class UsageService {
                 .divide(BigDecimal.valueOf(window), 2, RoundingMode.HALF_UP);
     }
 
+    /** Spend since a timestamp, used by the daily/monthly windows. */
+    public BigDecimal spendFor(Long keyId, Instant from) {
+        return nz(usage.sumCostForKeySince(keyId, from));
+    }
+
     public Map<String, Object> keySummary(ClientKey key, Duration window) {
         Instant from = Instant.now().minus(window);
         long requests = usage.countByClientKeyIdAndCreatedAtAfter(key.getId(), from);

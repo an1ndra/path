@@ -44,6 +44,12 @@ public class GatewayProperties {
     /** Request bodies larger than this are rejected with 413. */
     private long maxRequestBytes = 1_048_576;
 
+    /** Hard cap on max_tokens applied to every request; 0 disables. */
+    private int maxOutputTokens = 0;
+
+    /** How long to wait for in-flight streams during shutdown. */
+    private Duration drainTimeout = Duration.ofSeconds(30);
+
     /** Null means unlimited unless set. */
     private BigDecimal defaultCreditLimitUsd;
 

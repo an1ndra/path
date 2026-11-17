@@ -31,7 +31,7 @@ public final class ChatRequestSpec {
     private final List<String> fallbackModels;
     private final boolean stream;
     private final boolean includeUsage;
-    private final Integer maxTokens;
+    private Integer maxTokens;
     private final List<String> providerOrder;
     private final boolean allowFallbacks;
 
@@ -133,6 +133,18 @@ public final class ChatRequestSpec {
     public boolean stream() { return stream; }
     public boolean includeUsage() { return includeUsage; }
     public Integer maxTokens() { return maxTokens; }
+
+    /** Applies a per-key or global output cap, rewriting the body the way a client would. */
+    public void clampMaxTokens(Integer cap) {
+        if (cap == null || cap <= 0) {
+            return;
+        }
+        if (maxTokens == null || maxTokens > cap) {
+            maxTokens = cap;
+            body.put("max_tokens", cap);
+            body.remove("max_completion_tokens");
+        }
+    }
     public List<String> providerOrder() { return providerOrder; }
     public boolean allowFallbacks() { return allowFallbacks; }
 

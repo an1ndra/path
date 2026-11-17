@@ -80,6 +80,58 @@ public class AdminReportingService {
         return out;
     }
 
+    /** Comma-separated statement of calls, one row per request, oldest first. */
+    public String usageCsv(Long keyId, java.time.Instant from, java.time.Instant to, int limit) {
+        int capped = Math.max(1, Math.min(limit, 50_000));
+        List<UsageRecord> rows = usage.findByCreatedAtBetweenOrderByCreatedAtAsc(
+                from, to, PageRequest.of(0, capped));
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("created_at,key_id,key_name,model,provider,upstream_model,prompt_tokens,")
+                .append("completion_tokens,cached_input_tokens,cache_write_tokens,reasoning_tokens,")
+                .append("input_cost_usd,cached_input_cost_usd,cache_write_cost_usd,output_cost_usd,")
+                .append("cost_usd,latency_ms,ttft_ms,streamed,status,error_code\n");
+
+        for (UsageRecord r : rows) {
+            if (keyId != null && !keyId.equals(r.getClientKeyId())) {
+                continue;
+            }
+            csv.append(r.getCreatedAt()).append(',')
+                    .append(r.getClientKeyId() == null ? "" : r.getClientKeyId()).append(',')
+                    .append(escape(r.getClientKeyName())).append(',')
+                    .append(escape(r.getPublicModelId())).append(',')
+                    .append(escape(r.getProviderSlug())).append(',')
+                    .append(escape(r.getUpstreamModelId())).append(',')
+                    .append(r.getPromptTokens()).append(',')
+                    .append(r.getCompletionTokens()).append(',')
+                    .append(r.getCachedInputTokens()).append(',')
+                    .append(r.getCacheWriteTokens()).append(',')
+                    .append(r.getReasoningTokens()).append(',')
+                    .append(r.getInputCostUsd()).append(',')
+                    .append(r.getCachedInputCostUsd()).append(',')
+                    .append(r.getCacheWriteCostUsd()).append(',')
+                    .append(r.getOutputCostUsd()).append(',')
+                    .append(r.getCostUsd()).append(',')
+                    .append(r.getLatencyMs()).append(',')
+                    .append(r.getTtftMs() == null ? "" : r.getTtftMs()).append(',')
+                    .append(r.isStreamed()).append(',')
+                    .append(r.getStatus().name().toLowerCase()).append(',')
+                    .append(escape(r.getErrorCode()))
+                    .append('\n');
+        }
+        return csv.toString();
+    }
+
+    private static String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.indexOf(',') < 0 && value.indexOf('"') < 0 && value.indexOf('\n') < 0) {
+            return value;
+        }
+        return '"' + value.replace("\"", "\"\"") + '"';
+    }
+
     public Map<String, Object> stats(String window) {
         Duration parsed = Durations.cap(Durations.parse(window, Duration.ofHours(24)), Duration.ofDays(365));
         return adminService.stats(parsed);

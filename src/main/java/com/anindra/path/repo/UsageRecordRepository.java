@@ -15,6 +15,8 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     List<UsageRecord> findByCreatedAtAfterOrderByCreatedAtDesc(Instant from, Pageable pageable);
 
+    List<UsageRecord> findByCreatedAtBetweenOrderByCreatedAtAsc(Instant from, Instant to, Pageable pageable);
+
     long countByCreatedAtAfter(Instant from);
 
     long countByClientKeyIdAndCreatedAtAfter(Long clientKeyId, Instant from);

@@ -42,6 +42,7 @@ public class ChatCompletionsController {
     private final ApiKeyService apiKeys;
     private final IdempotencyService idempotency;
     private final ConcurrencyLimiter concurrency;
+    private final com.anindra.path.gateway.DrainState drain;
     private final GatewayProperties props;
 
     @PostMapping("/chat/completions")
@@ -56,15 +57,20 @@ public class ChatCompletionsController {
                     "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
         }
 
-        int limit = key.getMaxConcurrentRequests() != null
-                ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
-        if (!concurrency.tryAcquire(key.getId(), limit)) {
-            throw ApiException.tooManyConcurrent(limit);
-        }
+        drain.begin();
         try {
-            return handle(body, key, request, response);
+            int limit = key.getMaxConcurrentRequests() != null
+                    ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
+            if (!concurrency.tryAcquire(key.getId(), limit)) {
+                throw ApiException.tooManyConcurrent(limit);
+            }
+            try {
+                return handle(body, key, request, response);
+            } finally {
+                concurrency.release(key.getId());
+            }
         } finally {
-            concurrency.release(key.getId());
+            drain.end();
         }
     }
 

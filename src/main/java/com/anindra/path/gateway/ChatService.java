@@ -169,9 +169,10 @@ public class ChatService {
 
             } catch (IOException e) {
                 breaker.onFailure(providerId);
+                String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 lastError = ApiException.upstream(502,
-                        "Could not reach " + rr.providerSlug() + ": " + e.getMessage(), "upstream_network_error");
-                failures.add(rr.providerSlug() + ": " + e.getMessage());
+                        "Could not reach " + rr.providerSlug() + ": " + reason, "upstream_network_error");
+                failures.add(rr.providerSlug() + ": " + reason);
                 fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
                 if (i == chain.size() - 1) {
                     break;

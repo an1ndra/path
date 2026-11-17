@@ -102,6 +102,10 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      group:
+        providers:
+          include: provider
+          show-details: always
   prometheus:
     metrics:
       export:

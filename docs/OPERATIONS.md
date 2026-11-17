@@ -97,6 +97,9 @@ digest is written to the workflow summary so it can be pinned.
 
 ## Observability
 
+- **Provider health** at `/actuator/health/providers`: circuit state and retry-after per
+  provider. Overall health stays UP while fallback exists; only a total outage returns
+  OUT_OF_SERVICE.
 - **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,
   streamed), `path_latency_seconds`, `path_tokens_total` (prompt/completion/cached),
   `path_cost_usd_total`, `path_cache_hits_total`.

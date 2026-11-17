@@ -144,5 +144,6 @@ or `docker compose up --build`.
 | `/v1/**` | public API, bearer key |
 | `/admin/**` | `X-Admin-Token` |
 | `/actuator/health` | liveness + readiness |
+| `/actuator/health/providers` | per-provider circuit state and retry-after |
 | `/actuator/prometheus` | metrics |
 | `/v3/api-docs` | OpenAPI 3 |

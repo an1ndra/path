@@ -41,9 +41,13 @@ public class DataSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         boolean fresh = providers.count() == 0;
-        Map<String, Provider> bySlug = ensureProviders();
-        if (fresh && routes.count() == 0) {
-            seedRoutes(bySlug);
+        if (props.isSeedDefaults()) {
+            Map<String, Provider> bySlug = ensureProviders();
+            if (fresh && routes.count() == 0) {
+                seedRoutes(bySlug);
+            }
+        } else {
+            log.info("Gateway seed-defaults is off: not creating the example provider/route catalogue.");
         }
         if (projectsRepository.count() == 0) {
             projectsRepository.save(new com.anindra.path.domain.Project("default", "Default project"));

@@ -19,6 +19,7 @@ except the provider credentials you actually use.
 | Variable | Default | Meaning |
 |---|---|---|
 | `GATEWAY_BOOTSTRAP_DEMO_KEY` | `false` | create a demo key when the table is empty (ignored in `prod`) |
+| `GATEWAY_SEED_DEFAULTS` | `true` | seed the example provider/route catalogue on boot; set `false` on a real deployment |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests per key (0 = unlimited) |

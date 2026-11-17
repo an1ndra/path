@@ -36,6 +36,12 @@ public class GatewayProperties {
     /** Create a demo client key on boot when the key table is empty. */
     private boolean bootstrapDemoKey = false;
 
+    /**
+     * Seed the example provider/route catalogue on boot. A real deployment wants this off:
+     * otherwise four providers nobody configured reappear on every restart.
+     */
+    private boolean seedDefaults = true;
+
     private int defaultRpmLimit = 120;
 
     /** Concurrent in-flight requests allowed per key unless the key overrides it. */

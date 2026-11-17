@@ -337,6 +337,22 @@ def main():
     check("responses carry X-Request-Id", bool(chat_headers.get("X-Request-Id")),
           str(chat_headers.get("X-Request-Id")))
 
+    # ---------------------------------------------------------------- routing
+    status, _, models = jreq("GET", "/v1/models", key=key)
+    ids = [m["id"] for m in models.get("data", [])]
+    check("catalogue advertises capability aliases",
+          all(a in ids for a in ("cheap", "fast", "long-context")), str(ids[-6:]))
+
+    status, headers, body = jreq("POST", "/v1/chat/completions", {
+        "model": "cheap", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("cheap alias routes to a model", status == 200 and headers.get("X-Gateway-Provider") is not None,
+          str(status) + str(body)[:120])
+
+    status, _, routes_body = jreq("GET", "/admin/routes?model=auto-fast", admin=True)
+    if routes_body:
+        jreq("PATCH", f"/admin/routes/{routes_body[0]['id']}", {"weight": 100}, admin=True)
+    check("auto-fast keeps both routes", len(routes_body) == 2, str(len(routes_body)))
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

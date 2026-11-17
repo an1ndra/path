@@ -55,7 +55,7 @@ public class ChatService {
     }
 
     public Result complete(ChatRequestSpec spec, ClientKey key) {
-        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec);
+        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
         creditGuard.check(key, spec, chain.get(0));
 
         List<String> failures = new ArrayList<>();

@@ -26,8 +26,14 @@ public class RouteResolver {
 
     private final ModelRouteRepository routes;
     private final ProviderRepository providers;
+    private final ModelAliasService aliases;
 
     public List<ResolvedRoute> resolve(ChatRequestSpec spec) {
+        return resolve(spec, null);
+    }
+
+    /** @param keyId used for stable canary assignment; null means no weighting. */
+    public List<ResolvedRoute> resolve(ChatRequestSpec spec, Long keyId) {
         List<String> wantedModels = new ArrayList<>();
         if (!spec.fallbackModels().isEmpty()) {
             wantedModels.addAll(spec.fallbackModels());
@@ -40,7 +46,9 @@ public class RouteResolver {
         Set<String> seen = new LinkedHashSet<>();
 
         for (String model : wantedModels) {
-            for (ModelRoute route : routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(model)) {
+            String target = aliases.isAlias(model) ? aliases.resolve(model).orElse(model) : model;
+            List<ResolvedRoute> group = new ArrayList<>();
+            for (ModelRoute route : routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(target)) {
                 Provider provider = providers.findById(route.getProviderId()).orElse(null);
                 if (provider == null || !provider.isEnabled()) {
                     continue;
@@ -49,8 +57,9 @@ public class RouteResolver {
                 if (!seen.add(key)) {
                     continue;
                 }
-                chain.add(new ResolvedRoute(route, provider));
+                group.add(new ResolvedRoute(route, provider));
             }
+            chain.addAll(weighted(group, keyId, target));
         }
 
         if (!spec.providerOrder().isEmpty()) {
@@ -71,5 +80,34 @@ public class RouteResolver {
             chain = chain.subList(0, 1);
         }
         return chain;
+    }
+
+    /** Stable per-key weighted shuffle: the chosen route leads, the rest stay as fallback. */
+    private static List<ResolvedRoute> weighted(List<ResolvedRoute> group, Long keyId, String model) {
+        if (group.size() < 2 || keyId == null) {
+            return group;
+        }
+        int total = group.stream().mapToInt(r -> Math.max(0, r.route().getWeight())).sum();
+        if (total <= 0) {
+            return group;
+        }
+        int point = (int) Math.floorMod(keyId * 131L + model.hashCode(), (long) total);
+        int cursor = 0;
+        int chosen = 0;
+        for (int i = 0; i < group.size(); i++) {
+            cursor += Math.max(0, group.get(i).route().getWeight());
+            if (point < cursor) {
+                chosen = i;
+                break;
+            }
+        }
+        List<ResolvedRoute> ordered = new ArrayList<>(group.size());
+        ordered.add(group.get(chosen));
+        for (int i = 0; i < group.size(); i++) {
+            if (i != chosen) {
+                ordered.add(group.get(i));
+            }
+        }
+        return ordered;
     }
 }

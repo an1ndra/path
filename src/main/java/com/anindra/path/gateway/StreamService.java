@@ -65,7 +65,7 @@ public class StreamService {
 
     /** Resolve the fallback chain and authorise spend. Throws before any bytes are sent. */
     public List<RouteResolver.ResolvedRoute> prepare(ChatRequestSpec spec, ClientKey key) {
-        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec);
+        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
         creditGuard.check(key, spec, chain.get(0));
         return chain;
     }

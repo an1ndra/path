@@ -64,6 +64,10 @@ public class ModelRoute {
     private boolean enabled = true;
 
     /** Opt-in: replay identical deterministic requests from the response cache. */
+    /** Traffic share within a public model; equal weights split evenly. */
+    @Column(nullable = false)
+    private int weight = 100;
+
     @Column(nullable = false)
     private boolean cacheEnabled = false;
 

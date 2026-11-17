@@ -174,6 +174,23 @@ Request-level controls, OpenRouter style:
 `provider.allow_fallbacks: false` pins the request to the first route, so an upstream
 500 surfaces to the caller instead of being masked.
 
+**Capability aliases** are resolved from the live route table, so clients can stop
+hardcoding vendor ids:
+
+| Alias | Resolves to |
+|---|---|
+| `cheap` | enabled route with the lowest input price |
+| `fast` | lowest output price |
+| `long-context` | largest declared context window |
+| `vision` | first route whose description mentions vision |
+
+They appear in `/v1/models` with a `resolves_to` field.
+
+**Canary / A-B** — each route has a `weight` (default 100). The starting route is chosen
+by a stable hash of `(client key, model)` over the weights, so a given key keeps landing
+on the same variant and the rest of the chain stays as fallback. Set weights with
+`PATCH /admin/routes/{id} {"weight": 20}`.
+
 ## Admin API
 
 Every `/admin/**` call needs `X-Admin-Token: $GATEWAY_ADMIN_TOKEN`. If that variable is

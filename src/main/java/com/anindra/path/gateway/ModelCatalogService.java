@@ -26,6 +26,7 @@ public class ModelCatalogService {
 
     private final ModelRouteRepository routes;
     private final ProviderRepository providers;
+    private final ModelAliasService aliases;
 
     public Map<String, Object> list() {
         Map<Long, Provider> byId = providers.findAll().stream()
@@ -43,6 +44,8 @@ public class ModelCatalogService {
         List<Map<String, Object>> data = new ArrayList<>();
         grouped.forEach((modelId, modelRoutes) -> data.add(describe(modelId, modelRoutes, byId)));
 
+        data.addAll(aliases.describeAll());
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("object", "list");
         out.put("data", data);
@@ -50,6 +53,10 @@ public class ModelCatalogService {
     }
 
     public Optional<Map<String, Object>> find(String modelId) {
+        if (aliases.isAlias(modelId)) {
+            return aliases.resolve(modelId).flatMap(this::find).or(() ->
+                    Optional.of(resolveAliasEntry(modelId)));
+        }
         List<ModelRoute> modelRoutes = routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(modelId);
         if (modelRoutes.isEmpty()) {
             return Optional.empty();
@@ -57,6 +64,15 @@ public class ModelCatalogService {
         Map<Long, Provider> byId = providers.findAll().stream()
                 .collect(Collectors.toMap(Provider::getId, Function.identity()));
         return Optional.of(describe(modelId, modelRoutes, byId));
+    }
+
+    private Map<String, Object> resolveAliasEntry(String alias) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", alias);
+        entry.put("object", "model");
+        entry.put("owned_by", "path");
+        entry.put("resolves_to", null);
+        return entry;
     }
 
     private Map<String, Object> describe(String modelId, List<ModelRoute> modelRoutes,

@@ -276,6 +276,18 @@ export DB_USER=aigateway DB_PASSWORD=aigateway
 
 or `docker compose up --build`.
 
+## Schema migrations
+
+Flyway owns the schema; Hibernate runs with `ddl-auto: validate` and fails fast if an
+entity and the database disagree.
+
+- `src/main/resources/db/migration/V1__baseline.sql` is the baseline, written in
+  portable SQL (`identity` columns, `timestamp with time zone`, enums as varchar).
+- **Never edit an applied migration.** Add `V2__…sql` instead.
+- An existing pre-Flyway database is baselined at V1 automatically, so upgrading a
+  running install does not drop data.
+- Tests run the same migrations against in-memory H2, so a broken migration fails CI.
+
 ## Tests
 
 ```bash
@@ -317,6 +329,8 @@ python3 tools/smoke_test.py        # 49 checks
   estimate checked before it. An upstream that reports no usage is billed from an
   estimate and flagged with `usage_estimated=true`, so inferred spend is never
   presented as observed.
+- **Schema changes require a migration.** Add `V<n>__name.sql`; `ddl-auto` is
+  `validate`, so a mismatch stops the app at startup rather than at the first query.
 - **Cost precision is 8 decimals.** Each component is rounded before summing, so a
   call's stored total can differ from the exact product by at most one unit in the
   eighth decimal (USD 1e-8).

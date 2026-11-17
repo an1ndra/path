@@ -1,6 +1,8 @@
 package com.anindra.path.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -72,7 +74,7 @@ public class UsageRecord {
     @Column(precision = 18, scale = 8)
     private BigDecimal cachedSavingsUsd = BigDecimal.ZERO;
 
-    @Column(precision = 18, scale = 6)
+    @Column(precision = 18, scale = 8)
     private BigDecimal costUsd = BigDecimal.ZERO;
 
     /** True when the provider reported no usage block and the numbers were inferred. */
@@ -102,6 +104,7 @@ public class UsageRecord {
     private boolean streamed;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 16)
     private Status status = Status.SUCCESS;
 

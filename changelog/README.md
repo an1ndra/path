@@ -25,7 +25,8 @@ Deprecated, Removed, Fixed, Security.
 
 The release workflow runs `tools/changelog.py "$GITHUB_REF_NAME"`, which reads
 `changelog/<tag>.md` and uses it verbatim as the release body. A tag without a file, or
-with an empty one, **fails the release** rather than publishing blank notes.
+with no real entries (only `Nothing yet.` placeholders), **fails the release** rather than
+publishing blank notes.
 
 Preview locally before tagging:
 

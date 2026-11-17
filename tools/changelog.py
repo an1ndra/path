@@ -43,7 +43,11 @@ def main() -> int:
         return 1
 
     body = path.read_text(encoding="utf-8").strip()
-    if not body or body.endswith("Nothing yet.") or "Nothing yet." in body:
+    real_entries = [
+        line for line in body.splitlines()
+        if line.strip().startswith("- ") and "Nothing yet." not in line
+    ]
+    if not body or not real_entries:
         print(f"changelog/{path.name} has no real entries yet.", file=sys.stderr)
         return 1
 

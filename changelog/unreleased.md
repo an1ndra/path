@@ -17,4 +17,5 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Security
 
-- Nothing yet.
+- The container image now runs as an unprivileged user (`USER path`), fixing
+  Trivy DS-0002.

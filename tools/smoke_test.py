@@ -89,8 +89,17 @@ def demo_key():
     return None
 
 
+def key_works(key):
+    """A demo key scraped from a stale log may belong to a deleted database."""
+    status, _, _ = req("GET", "/v1/models", key=key, timeout=10)
+    return status == 200
+
+
 def main():
     key = demo_key()
+    if key and not key_works(key):
+        print("Demo key in", LOG, "does not authenticate; creating a fresh one")
+        key = None
     if not key:
         status, _, body = jreq("POST", "/admin/keys", {"name": "smoke-fallback"}, admin=True)
         if status != 200:

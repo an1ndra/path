@@ -56,6 +56,7 @@ public class GatewayProperties {
     private Breaker breaker = new Breaker();
     private Idempotency idempotency = new Idempotency();
     private Cache cache = new Cache();
+    private Alerts alerts = new Alerts();
 
     @Getter
     @Setter
@@ -66,6 +67,16 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class Alerts {
+        /** Slack-compatible webhook; blank disables alerting. */
+        private String webhookUrl = "";
+        private Duration cooldown = Duration.ofHours(1);
+        /** Warn when a key has less than this fraction of its credit left. */
+        private double budgetThreshold = 0.8;
     }
 
     @Getter

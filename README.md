@@ -275,6 +275,9 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_DRAIN_TIMEOUT` | `30s` | how long shutdown waits for in-flight streams |
 | `GATEWAY_SWAGGER_UI` | `false` | serve Swagger UI at `/swagger-ui.html` |
 | `GATEWAY_TRACE_SAMPLE` | `0` | trace sampling probability (0 disables export) |
+| `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for operational alerts |
+| `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
+| `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
 | `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
 | `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
@@ -357,6 +360,11 @@ python3 tools/smoke_test.py        # 49 checks
   replays the stored response — streams included — with `X-Path-Cache: hit`, billed at
   zero and reported as savings. Entries last `cache_ttl_seconds` (default 3600) and are
   scoped to the client key, so tenants cannot read each other's completions.
+- **Every admin mutation is audited.** Provider, route and key changes are recorded with
+  the before/after payload and readable at `GET /admin/audit?action=route.update`.
+- **Alerts are webhook-based and deduplicated.** Set `GATEWAY_ALERT_WEBHOOK` to receive
+  `provider.circuit_open`, `provider.rate_limited` and `key.budget_low` events, at most
+  once per event per cooldown.
 - **Budgets have three windows.** A key can carry a lifetime credit limit plus
   `daily_limit_usd` and `monthly_limit_usd`; both are checked against stored spend before
   the call. `max_output_tokens` (per key) and `GATEWAY_MAX_OUTPUT_TOKENS` (global) clamp

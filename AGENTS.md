@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (61)
+# unit + integration tests (65)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (93 checks, no real keys)
+# full end-to-end suite against a mock upstream (94 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -53,6 +53,7 @@ com.anindra.path
 │   └── (config) RequestIdFilter  X-Request-Id + MDC correlation
 │   ├── RouteResolver             public model id → ordered chain (aliases, weights)
 │   ├── ModelAliasService         cheap/fast/long-context/vision
+│   └── (admin) AuditService, AlertService
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
 │   └── TokenUsage                normalised token accounting
@@ -120,7 +121,7 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 - `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
 - `CreditGuardTest` — budget windows and max_tokens clamping.
 - `DrainStateTest` — in-flight accounting and refusal while draining.
-- `tools/smoke_test.py` — 93 checks against `tools/mock-upstream.py`. The mock can
+- `tools/smoke_test.py` — 94 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -152,6 +153,8 @@ a smoke check. Never claim a fix without running both.
 - **Shutdown drains for `GATEWAY_DRAIN_TIMEOUT`.** `DrainState` flips readiness and
   refuses new chat requests while streams finish; keep the value below your orchestrator's
   termination grace period.
+- **Audit and alert writes must never break the operation.** Both swallow their own
+  failures and log a warning.
 - **Aliases are computed from the route table on every resolve**, so editing a price can
   change what `cheap` means. There is no alias table to drift out of sync.
 - **Canary weights must stay deterministic per key.** `RouteResolver.weighted` hashes

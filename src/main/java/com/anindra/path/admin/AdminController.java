@@ -18,6 +18,7 @@ public class AdminController {
     private final AdminReportingService reporting;
     private final ModelSyncService modelSync;
     private final ProviderProbeService probes;
+    private final AuditService audit;
 
     // ------------------------------------------------------------- providers
 
@@ -28,18 +29,23 @@ public class AdminController {
 
     @PostMapping("/providers")
     public Map<String, Object> createProvider(@RequestBody AdminService.ProviderInput input) {
-        return admin.createProvider(input);
+        var result = admin.createProvider(input);
+        audit.record("provider.create", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @PatchMapping("/providers/{id}")
     public Map<String, Object> updateProvider(@PathVariable Long id,
                                               @RequestBody AdminService.ProviderInput input) {
-        return admin.updateProvider(id, input);
+        var result = admin.updateProvider(id, input);
+        audit.record("provider.update", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @DeleteMapping("/providers/{id}")
     public Map<String, Object> deleteProvider(@PathVariable Long id) {
         admin.deleteProvider(id);
+        audit.record("provider.delete", "provider:" + id, null);
         return Map.of("deleted", true, "id", id);
     }
 
@@ -52,18 +58,23 @@ public class AdminController {
 
     @PostMapping("/routes")
     public Map<String, Object> createRoute(@RequestBody AdminService.RouteInput input) {
-        return admin.createRoute(input);
+        var result = admin.createRoute(input);
+        audit.record("route.create", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @PatchMapping("/routes/{id}")
     public Map<String, Object> updateRoute(@PathVariable Long id,
                                            @RequestBody AdminService.RouteInput input) {
-        return admin.updateRoute(id, input);
+        var result = admin.updateRoute(id, input);
+        audit.record("route.update", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @DeleteMapping("/routes/{id}")
     public Map<String, Object> deleteRoute(@PathVariable Long id) {
         admin.deleteRoute(id);
+        audit.record("route.delete", "route:" + id, null);
         return Map.of("deleted", true, "id", id);
     }
 
@@ -76,18 +87,24 @@ public class AdminController {
 
     @PostMapping("/keys")
     public Map<String, Object> createKey(@RequestBody AdminService.KeyInput input) {
-        return admin.createKey(input);
+        var result = admin.createKey(input);
+        audit.record("key.create", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @PatchMapping("/keys/{id}")
     public Map<String, Object> updateKey(@PathVariable Long id,
                                          @RequestBody AdminService.KeyInput input) {
-        return admin.updateKey(id, input);
+        var result = admin.updateKey(id, input);
+        audit.record("key.update", String.valueOf(result.get("id")), input);
+        return result;
     }
 
     @PostMapping("/keys/{id}/revoke")
     public Map<String, Object> revokeKey(@PathVariable Long id) {
-        return admin.revokeKey(id);
+        var result = admin.revokeKey(id);
+        audit.record("key.revoke", String.valueOf(result.get("id")), null);
+        return result;
     }
 
     @PostMapping("/keys/{id}/topup")
@@ -133,6 +150,12 @@ public class AdminController {
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"usage-" + to + ".csv\"")
                 .body(csv);
+    }
+
+    @GetMapping("/audit")
+    public List<Map<String, Object>> auditLog(@RequestParam(required = false) String action,
+                                              @RequestParam(defaultValue = "100") int limit) {
+        return audit.list(action, limit);
     }
 
     @PostMapping("/models/sync")

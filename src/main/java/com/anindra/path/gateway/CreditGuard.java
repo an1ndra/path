@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Map;
 
 /**
  * Refuses a request before any upstream call when the key is out of credit, has
@@ -26,6 +27,7 @@ public class CreditGuard {
     private final ApiKeyService apiKeys;
     private final UsageService usage;
     private final GatewayProperties props;
+    private final com.anindra.path.admin.AlertService alerts;
 
     public void check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
         Integer cap = key.getMaxOutputTokens() != null && key.getMaxOutputTokens() > 0
@@ -44,6 +46,17 @@ public class CreditGuard {
         BigDecimal remaining = apiKeys.remaining(key);
         if (remaining == null) {
             return;
+        }
+        if (key.getCreditLimitUsd() != null && key.getCreditLimitUsd().signum() > 0) {
+            double left = remaining.divide(key.getCreditLimitUsd(), 4, java.math.RoundingMode.HALF_UP).doubleValue();
+            if (left < props.getAlerts().getBudgetThreshold()) {
+                alerts.notify("key.budget_low", Map.of(
+                        "key_id", key.getId(),
+                        "key_name", key.getName(),
+                        "remaining_usd", remaining,
+                        "limit_usd", key.getCreditLimitUsd(),
+                        "fraction", left));
+            }
         }
         if (remaining.signum() <= 0) {
             throw ApiException.insufficientCredits(

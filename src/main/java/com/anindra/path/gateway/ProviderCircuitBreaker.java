@@ -31,6 +31,7 @@ public class ProviderCircuitBreaker {
 
     private final Map<Long, Entry> entries = new ConcurrentHashMap<>();
     private final GatewayProperties props;
+    private final com.anindra.path.admin.AlertService alerts;
 
     /** Read-only projection used by the admin API. */
     public Map<String, Object> snapshot() {
@@ -86,6 +87,10 @@ public class ProviderCircuitBreaker {
             if (entry.state == State.HALF_OPEN
                     || entry.failures >= Math.max(1, props.getBreaker().getFailureThreshold())) {
                 openUntil(entry, props.getBreaker().getOpenDuration());
+                alerts.notify("provider.circuit_open", Map.of(
+                        "provider_id", providerId,
+                        "failures", entry.failures,
+                        "retry_after_seconds", Math.max(0, (entry.openUntilMs - System.currentTimeMillis()) / 1000)));
             }
         }
     }
@@ -95,6 +100,9 @@ public class ProviderCircuitBreaker {
         Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
         synchronized (entry) {
             openUntil(entry, retryAfter == null ? props.getBreaker().getOpenDuration() : retryAfter);
+            alerts.notify("provider.rate_limited", Map.of(
+                    "provider_id", providerId,
+                    "retry_after_seconds", Math.max(0, (entry.openUntilMs - System.currentTimeMillis()) / 1000)));
         }
     }
 

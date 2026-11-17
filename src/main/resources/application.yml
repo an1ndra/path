@@ -64,6 +64,10 @@ gateway:
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
   cache:
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  alerts:
+    webhook-url: ${GATEWAY_ALERT_WEBHOOK:}
+    cooldown: ${GATEWAY_ALERT_COOLDOWN:1h}
+    budget-threshold: ${GATEWAY_ALERT_BUDGET_THRESHOLD:0.8}
   idempotency:
     ttl: ${GATEWAY_IDEMPOTENCY_TTL:24h}
     max-response-bytes: ${GATEWAY_IDEMPOTENCY_MAX_BYTES:2097152}

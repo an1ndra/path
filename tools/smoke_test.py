@@ -353,6 +353,13 @@ def main():
         jreq("PATCH", f"/admin/routes/{routes_body[0]['id']}", {"weight": 100}, admin=True)
     check("auto-fast keeps both routes", len(routes_body) == 2, str(len(routes_body)))
 
+    # ------------------------------------------------------------------ audit
+    status, _, audit_rows = jreq("GET", "/admin/audit?limit=50", admin=True)
+    check("admin audit records mutations",
+          status == 200 and isinstance(audit_rows, list)
+          and any(e.get("action") == "key.create" for e in audit_rows),
+          str(status) + str(audit_rows)[:120])
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

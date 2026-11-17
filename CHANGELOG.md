@@ -5,6 +5,7 @@ verbatim as the body of the matching GitHub release.
 
 | Version | Date | Notes |
 |---|---|---|
+| v0.2.0 | 2026-11-17 | [changelog/v0.2.0.md](changelog/v0.2.0.md) |
 | v0.1.0 | 2026-11-17 | [changelog/v0.1.0.md](changelog/v0.1.0.md) |
 
 Add new entries to [`changelog/unreleased.md`](changelog/unreleased.md) as you work; the

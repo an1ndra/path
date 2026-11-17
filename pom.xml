@@ -13,7 +13,7 @@
 
     <groupId>io.github.an1ndra</groupId>
     <artifactId>path</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <name>path</name>
     <description>Provider-agnostic LLM gateway: routing, fallback, credits and cache-aware token metering for OpenAI, Anthropic and any OpenAI-compatible API</description>
     <url>https://github.com/an1ndra/path</url>

@@ -5,20 +5,7 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Added
 
-- Per-provider health indicator at `/actuator/health/providers`; overall health only
-  reports OUT_OF_SERVICE when every provider is circuit-open.
-- Master-key rotation (`POST /admin/rotate-master-key`) re-encrypts every stored
-  provider credential before switching the active key.
-- Admin auth is rate limited: repeated failures from one address get 429s.
-- `projectId` filters on `/admin/usage`, `/admin/stats` and the CSV export.
-- Google Gemini as a seeded provider, using its OpenAI-compatible endpoint
-  (`GEMINI_API_KEY`); chat, streaming, tools, images and embeddings all work.
-- Project-level lifetime, daily and monthly budgets, enforced across every key in the
-  project, plus `GET /admin/projects/{id}/usage` rollups.
-- Streaming prompt logs: the captured SSE payload is stored alongside non-streaming
-  bodies (still redacted and capped).
-- Anthropic `cache_control` markers on text and image parts are forwarded, enabling
-  provider-side prompt caching.
+- Nothing yet.
 
 ## Changed
 
@@ -26,10 +13,4 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Fixed
 
-- `docs/LIMITS.md` gaps that were fixable: project billing, streaming prompt logs and
-  Anthropic prompt caching. The rest are now documented as per-node or provider-inherent.
-
-## Security
-
-- The container image now runs as an unprivileged user (`USER path`), fixing
-  Trivy DS-0002.
+- Nothing yet.

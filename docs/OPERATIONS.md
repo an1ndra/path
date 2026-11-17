@@ -121,6 +121,16 @@ On SIGTERM the readiness probe goes DOWN, new chat requests get `503 shutting_do
 in-flight streams drain for up to `GATEWAY_DRAIN_TIMEOUT`. Keep that value below your
 orchestrator's termination grace period.
 
+## Release checklist
+
+1. Move the `Unreleased` entries in `CHANGELOG.md` into `## [x.y.z] - YYYY-MM-DD`.
+2. Bump the version in `pom.xml` if it changed.
+3. Commit on `Develop`, then open a PR into `main` (all security gates must pass).
+4. Tag on `main`: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+5. The release workflow extracts that changelog section as the release body, scans the
+   image, and publishes the jar, SBOM and `checksums.txt`. A missing section fails the
+   release before anything is published.
+
 ## Alerts
 
 Set `GATEWAY_ALERT_WEBHOOK` to a Slack-compatible URL to receive

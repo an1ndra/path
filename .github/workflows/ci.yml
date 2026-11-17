@@ -28,6 +28,9 @@ jobs:
           java-version: "21"
           cache: maven
 
+      - name: Validate the changelog is parseable
+        run: python3 tools/changelog.py 0.1.0 > /dev/null
+
       - name: Build and test
         run: ./mvnw -B verify
 

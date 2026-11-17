@@ -151,7 +151,10 @@ a smoke check. Never claim a fix without running both.
 - `Develop` is the default branch; direct pushes are allowed.
 - `main` is release-only: PR required, `Build and unit tests` + `End-to-end smoke test`
   must pass, no bypassing (admins included), no force-push, no deletion.
-- Release: push a `v*.*.*` tag → jar + multi-arch `ghcr.io/an1ndra/path` + release notes.
+- Release: move `CHANGELOG.md` entries from `Unreleased` into a `## [x.y.z] - date`
+  section, commit, then push a `v*.*.*` tag → jar + SBOM + checksums + multi-arch
+  `ghcr.io/an1ndra/path`. The workflow uses that changelog section as the release body
+  and fails the release if the section is missing or empty.
 
 ## Gotchas
 

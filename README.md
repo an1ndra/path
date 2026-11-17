@@ -87,6 +87,7 @@ print(client.chat.completions.create(
 | [Limits](docs/LIMITS.md) | Design decisions and known gaps |
 | [Testing](docs/TESTING.md) | Unit tests, the 99-check smoke suite, the mock upstream |
 | [Roadmap](docs/ROADMAP.md) | Delivered work and the three open stories |
+| [Changelog](CHANGELOG.md) | Release notes, also used as the GitHub release body |
 | [Security policy](SECURITY.md) | How to report a vulnerability and what CI checks |
 | [AGENTS.md](AGENTS.md) | Contributor conventions and gotchas |
 | [Postman](docs/path.postman_collection.json) | 26 requests over the public and admin surfaces |

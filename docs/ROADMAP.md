@@ -5,31 +5,13 @@ anyone reading the repo rather than the issue tracker.
 
 ## Open stories
 
-Ordered by the value they add per day of work, not by severity.
-
-### Product
-
-| # | Story | Why it matters |
+| # | Story | Blocked on |
 |---|---|---|
-| [#62](https://github.com/an1ndra/path/issues/62) | Spring AI `ChatModel` adapter module | a JVM-native gateway a Spring AI app cannot use is not much of a JVM gateway |
-| [#64](https://github.com/an1ndra/path/issues/64) | End-user attribution and budgets | a key and a project are operator concepts; without an end-user axis the gateway cannot bill a product's own customers |
-| [#71](https://github.com/an1ndra/path/issues/71) | Semantic cache tier | exact-match caching only catches literal repeats; needs explicit opt-in because a near-duplicate hit is a different prompt |
-| [#70](https://github.com/an1ndra/path/issues/70) | PII redaction and moderation passthrough | prompt logging is a PII store today; a product embedding the gateway has no policy hook |
-
-### Reach
-
-| # | Story | Why it matters |
-|---|---|---|
-| [#73](https://github.com/an1ndra/path/issues/73) | Azure OpenAI support | the default enterprise OpenAI path, currently unimplementable through the adapter |
-| [#75](https://github.com/an1ndra/path/issues/75) | Vertex AI / Gemini native | `thinkingConfig` and `safetySettings` are dropped today, which contradicts the 422 contract |
-
-### Money and operations
-
-| # | Story | Why it matters |
-|---|---|---|
-| [#74](https://github.com/an1ndra/path/issues/74) | Valkey-shared breaker and limiter | per-JVM state means replicas disagree about a dead provider |
-| [#61](https://github.com/an1ndra/path/issues/61) | Usage retention and partitioning | retention shipped; monthly partitioning has not |
-| [#59](https://github.com/an1ndra/path/issues/59) | Publish to Maven Central | needs a verified namespace, a GPG key and a Portal token |
+| [#62](https://github.com/an1ndra/path/issues/62) | Spring AI `ChatModel` adapter module | a decision on the module name and whether it publishes as a second artifact |
+| [#75](https://github.com/an1ndra/path/issues/75) | Vertex AI / Gemini native | a decision: Vertex (service-account auth) or AI Studio only |
+| [#74](https://github.com/an1ndra/path/issues/74) | Valkey-shared breaker and limiter | a Valkey instance to verify the cross-replica behaviour honestly |
+| [#61](https://github.com/an1ndra/path/issues/61) | Usage retention and partitioning | Postgres only; retention shipped, partitioning unverified on H2 |
+| [#59](https://github.com/an1ndra/path/issues/59) | Publish to Maven Central | a verified namespace, a GPG key and a Portal token |
 
 ## Delivered
 
@@ -45,6 +27,8 @@ Ordered by the value they add per day of work, not by severity.
 | Post-0.1.0 audit | all twelve fixes (#38–#51): unpriced routes disabled, generic 500s with a reference id, chunked-body limits, admin auth limiter, master-key rotation, `projectId` filters, tag-on-main guard |
 | Runnability | `tools/demo.sh` (60-second tour against the mock), `docs/WHY-PATH.md` |
 | Routing and billing (0.2) | adaptive routing strategies (#63), operator-defined aliases (#68), project rate and concurrency limits (#65), project budget alerts (#69), `POST /v1/tokens/count` (#66), idempotent embeddings (#67) |
+| Product (0.3) | semantic cache tier (#71), guardrails: PII redaction and moderation (#70), end-user attribution and budgets (#64), token counting (#66), idempotent embeddings (#67) |
+| Reach | Azure OpenAI (#73) |
 | Kubernetes | `deploy/helm/path` (#72): drain-aware grace period enforced at render time, HPA, PDB, optional Postgres and Valkey |
 
 ## How to pick one up

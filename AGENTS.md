@@ -152,6 +152,9 @@ a smoke check. Never claim a fix without running both.
 - `Develop` is the default branch; direct pushes are allowed.
 - `main` is release-only: PR required, `Build and unit tests` + `End-to-end smoke test`
   must pass, no bypassing (admins included), no force-push, no deletion.
+- Maven Central publishing lives behind `-P release` (plain jar + sources + javadoc,
+  signed); see `docs/PUBLISHING.md`. Never run `deploy` against a used version — Central
+  is immutable.
 - CI pins `ubuntu-26.04` (latest LTS) instead of `ubuntu-latest`; bump it deliberately.
 - Release: copy `changelog/unreleased.md` to `changelog/vX.Y.Z.md`, commit, then push a
   `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow

@@ -99,6 +99,30 @@ jobs:
           echo "ghcr.io/${{ github.repository }}@${{ steps.image.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+      # --- Maven Central (optional) -------------------------------------------
+      - name: Publish to Maven Central
+        if: vars.PUBLISH_TO_CENTRAL == 'true'
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          printf '%s' "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | gpg --batch --import
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XML
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${CENTRAL_USERNAME}</username>
+                <password>${CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          XML
+          ./mvnw -B -P release -DskipTests deploy
+
       # --- publish -----------------------------------------------------------
       - name: Extract release notes from CHANGELOG.md
         run: |

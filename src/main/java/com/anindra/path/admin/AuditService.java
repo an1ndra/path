@@ -31,7 +31,7 @@ public class AuditService {
             entry.setActor(currentActor());
             entry.setAction(action);
             entry.setTarget(target);
-            String json = details == null ? null : mapper.writeValueAsString(details);
+            String json = details == null ? null : mapper.writeValueAsString(sanitise(details));
             entry.setDetails(json != null && json.length() > MAX_DETAILS
                     ? json.substring(0, MAX_DETAILS) : json);
             audit.save(entry);
@@ -40,6 +40,41 @@ public class AuditService {
             log.warn("Could not record audit entry {}: {}", action, e.getMessage());
         }
     }
+
+    /**
+     * Audit details must never contain a credential. Admin inputs carry them (a provider's
+     * apiKey, a rotated master key), and the audit table is readable through the API, so a
+     * plaintext key there would defeat the encryption at rest.
+     */
+    static Object sanitise(Object details) {
+        var tree = MAPPER.valueToTree(details);
+        scrub(tree);
+        return tree;
+    }
+
+    private static void scrub(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+            java.util.List<String> names = new java.util.ArrayList<>();
+            object.fieldNames().forEachRemaining(names::add);
+            for (String name : names) {
+                if (SENSITIVE.matcher(name).find()) {
+                    object.put(name, "***");
+                } else {
+                    scrub(object.get(name));
+                }
+            }
+        } else if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode child : node) {
+                scrub(child);
+            }
+        }
+    }
+
+    private static final java.util.regex.Pattern SENSITIVE = java.util.regex.Pattern.compile(
+            "(?i)(api[-_]?key|password|secret|token|authorization|new_key|private)");
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     /**
      * The identity behind the request: the proxy-authenticated SSO user, the name of the

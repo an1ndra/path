@@ -28,9 +28,66 @@ public class RouteResolver {
     private final ProviderRepository providers;
     private final ModelAliasService aliases;
     private final com.anindra.path.admin.AliasService operatorAliases;
+    private final RoutingMetrics metrics;
 
     public List<ResolvedRoute> resolve(ChatRequestSpec spec) {
         return resolve(spec, null);
+    }
+
+    /**
+     * Reorders a resolved group by the route's strategy. The declared priority is still
+     * the default and the fallback spine: this only changes which route is tried first.
+     */
+    private List<ResolvedRoute> adaptive(List<ResolvedRoute> group, String publicModel) {
+        if (group.size() < 2) {
+            return group;
+        }
+        String strategy = group.get(0).route().getStrategy();
+        if (strategy == null || "priority".equalsIgnoreCase(strategy)) {
+            return group;
+        }
+
+        java.util.Comparator<ResolvedRoute> byLatency = java.util.Comparator.comparingDouble(
+                r -> {
+                    double ewma = metrics.latencyMs(r.providerSlug(), publicModel);
+                    return Double.isNaN(ewma) ? Double.MAX_VALUE : ewma;
+                });
+        java.util.Comparator<ResolvedRoute> byPrice = java.util.Comparator.comparing(
+                r -> r.route().getInputPricePerMillion() == null
+                        ? new java.math.BigDecimal("999999")
+                        : r.route().getInputPricePerMillion());
+        java.util.Comparator<ResolvedRoute> byPriority =
+                java.util.Comparator.comparingInt(r -> r.route().getPriority());
+
+        List<ResolvedRoute> ordered = new ArrayList<>(group);
+        if ("fastest".equalsIgnoreCase(strategy)) {
+            ordered.sort(byLatency.thenComparing(byPrice).thenComparing(byPriority));
+            return ordered;
+        }
+        if ("cheapest-viable".equalsIgnoreCase(strategy)) {
+            Integer slo = group.get(0).route().getLatencySloMs();
+            if (slo == null || slo <= 0) {
+                ordered.sort(byPrice.thenComparing(byPriority));
+                return ordered;
+            }
+            List<ResolvedRoute> viable = new ArrayList<>();
+            List<ResolvedRoute> tooSlow = new ArrayList<>();
+            for (ResolvedRoute route : ordered) {
+                double ewma = metrics.latencyMs(route.providerSlug(), publicModel);
+                // Unknown latency is treated as viable: routing away from a provider that
+                // has never been called would be a cold-start deadlock.
+                if (Double.isNaN(ewma) || ewma <= slo) {
+                    viable.add(route);
+                } else {
+                    tooSlow.add(route);
+                }
+            }
+            viable.sort(byPrice.thenComparing(byPriority));
+            tooSlow.sort(byLatency.thenComparing(byPrice));
+            viable.addAll(tooSlow);
+            return viable;
+        }
+        return group;
     }
 
     /** Expands operator-defined aliases, following nested ones, bounded to avoid a loop. */
@@ -85,7 +142,7 @@ public class RouteResolver {
                 }
                 group.add(new ResolvedRoute(route, provider));
             }
-            chain.addAll(weighted(group, keyId, target));
+            chain.addAll(adaptive(weighted(group, keyId, target), target));
         }
 
         if (!spec.providerOrder().isEmpty()) {

@@ -33,6 +33,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminService {
 
+    private final com.anindra.path.gateway.RoutingMetrics routingMetrics;
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ProviderInput(String slug, @JsonAlias("displayName") String displayName, String type,
                                 @JsonAlias("baseUrl") String baseUrl, @JsonAlias("apiKey") String apiKey,
@@ -56,6 +58,8 @@ public class AdminService {
                              @JsonAlias("contextLength") Integer contextLength,
                              @JsonAlias("supportsStreaming") Boolean supportsStreaming,
                              @JsonAlias("supportsTools") Boolean supportsTools,
+                             String strategy,
+                             @JsonAlias("latencySloMs") Integer latencySloMs,
                              Boolean enabled, String description) {
     }
 
@@ -311,12 +315,28 @@ public class AdminService {
         return routeView(route, slug);
     }
 
+    /** Unknown strategies are a 400, not a silent fallback to priority. */
+    private static String validateStrategy(String strategy) {
+        String value = strategy.trim().toLowerCase();
+        if (!java.util.Set.of("priority", "fastest", "cheapest-viable").contains(value)) {
+            throw ApiException.badRequest(
+                    "'strategy' must be one of priority, fastest, cheapest-viable.", "strategy");
+        }
+        return value;
+    }
+
     private static void applyOptionals(ModelRoute route, RouteInput in) {
         if (in.priority() != null) {
             route.setPriority(in.priority());
         }
         if (in.weight() != null) {
             route.setWeight(in.weight());
+        }
+        if (in.strategy() != null) {
+            route.setStrategy(validateStrategy(in.strategy()));
+        }
+        if (in.latencySloMs() != null) {
+            route.setLatencySloMs(in.latencySloMs());
         }
         if (in.cacheEnabled() != null) {
             route.setCacheEnabled(in.cacheEnabled());
@@ -366,6 +386,11 @@ public class AdminService {
         view.put("supports_tools", r.isSupportsTools());
         view.put("enabled", r.isEnabled());
         view.put("weight", r.getWeight());
+        view.put("strategy", r.getStrategy());
+        double ewma = routingMetrics.latencyMs(providerSlug, r.getPublicModelId());
+        view.put("ewma_latency_ms", Double.isNaN(ewma) ? null : Math.round(ewma));
+        view.put("ewma_error_rate", routingMetrics.errorRate(providerSlug, r.getPublicModelId()));
+        view.put("latency_slo_ms", r.getLatencySloMs());
         view.put("cache_enabled", r.isCacheEnabled());
         view.put("cache_ttl_seconds", r.getCacheTtlSeconds());
         view.put("description", r.getDescription());

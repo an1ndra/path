@@ -68,6 +68,13 @@ public class ModelRoute {
     @Column(nullable = false)
     private int weight = 100;
 
+    /** priority | fastest | cheapest-viable */
+    @Column(nullable = false, length = 32)
+    private String strategy = "priority";
+
+    /** For cheapest-viable: the p95 a route must beat to stay preferred. */
+    private Integer latencySloMs;
+
     @Column(nullable = false)
     private boolean cacheEnabled = false;
 

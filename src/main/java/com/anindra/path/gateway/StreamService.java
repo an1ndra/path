@@ -43,6 +43,7 @@ public class StreamService {
     private final UsageService usage;
     private final CreditGuard creditGuard;
     private final ProviderCircuitBreaker breaker;
+    private final RoutingMetrics metrics;
     private final ResponseCacheService cache;
     private final ObjectMapper mapper;
     private final GatewayProperties props;
@@ -50,14 +51,15 @@ public class StreamService {
 
     public StreamService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
                          UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
-                         ResponseCacheService cache, ObjectMapper mapper, GatewayProperties props,
-                         List<ProviderAdapter> adapterList) {
+                         RoutingMetrics metrics, ResponseCacheService cache, ObjectMapper mapper,
+                         GatewayProperties props, List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
         this.creditGuard = creditGuard;
         this.breaker = breaker;
+        this.metrics = metrics;
         this.cache = cache;
         this.mapper = mapper;
         this.props = props;
@@ -215,6 +217,7 @@ public class StreamService {
                         spec.publicModel(), provider.getSlug(), tokens.total(), tokens.cached(),
                         cost.toPlainString(), ttftMs, latency);
                 breaker.onSuccess(providerId);
+                metrics.recordSuccess(provider.getSlug(), spec.publicModel(), latency);
                 if (tee != null && cacheKey != null && !tee.overflowed()) {
                     cache.store(cacheKey, key.getId(), spec.publicModel(), provider.getSlug(),
                             rr.route(), "text/event-stream", tee.body(), tokens, cost);
@@ -222,6 +225,7 @@ public class StreamService {
                 return true;
 
             } catch (UpstreamException e) {
+                metrics.recordFailure(provider.getSlug(), spec.publicModel());
                 if (e.retryable()) {
                     if (e.status() == 429 && e.retryAfterSeconds() > 0) {
                         breaker.onRateLimited(providerId, java.time.Duration.ofSeconds(e.retryAfterSeconds()));

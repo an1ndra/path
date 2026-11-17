@@ -34,6 +34,7 @@ public class ChatService {
     private final ApiKeyService apiKeys;
     private final CreditGuard creditGuard;
     private final ProviderCircuitBreaker breaker;
+    private final RoutingMetrics metrics;
     private final ResponseCacheService cache;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
@@ -41,7 +42,7 @@ public class ChatService {
 
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
                        UsageService usage, ApiKeyService apiKeys, CreditGuard creditGuard,
-                       ProviderCircuitBreaker breaker,
+                       ProviderCircuitBreaker breaker, RoutingMetrics metrics,
                        ResponseCacheService cache, GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
@@ -51,6 +52,7 @@ public class ChatService {
         this.apiKeys = apiKeys;
         this.creditGuard = creditGuard;
         this.breaker = breaker;
+        this.metrics = metrics;
         this.cache = cache;
         this.props = props;
         this.mapper = mapper;
@@ -125,6 +127,7 @@ public class ChatService {
                     UpstreamException failure = UpstreamClient.mapError(
                             response.status(), response.body(), response.headers());
                     log.warn("Upstream {} -> {}: {}", rr.providerSlug(), failure.status(), failure.getMessage());
+                    metrics.recordFailure(rr.providerSlug(), spec.publicModel());
                     if (failure.retryable()) {
                         recordBreakerFailure(providerId, failure);
                     }
@@ -160,6 +163,7 @@ public class ChatService {
                 BigDecimal cost = usage.recordSuccess(key, spec, rr, tokens,
                         UsageService.CallMeta.nonStream(latency, requestId, finishReason, attempts, fallbackFrom));
                 breaker.onSuccess(providerId);
+                metrics.recordSuccess(rr.providerSlug(), spec.publicModel(), latency);
                 if (cacheKey != null) {
                     cache.store(cacheKey, key.getId(), spec.publicModel(), rr.providerSlug(),
                             rr.route(), "application/json", normalized.toString(), tokens, cost);
@@ -169,6 +173,7 @@ public class ChatService {
 
             } catch (IOException e) {
                 breaker.onFailure(providerId);
+                metrics.recordFailure(rr.providerSlug(), spec.publicModel());
                 String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 lastError = ApiException.upstream(502,
                         "Could not reach " + rr.providerSlug() + ": " + reason, "upstream_network_error");

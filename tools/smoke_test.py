@@ -380,6 +380,34 @@ def main():
         "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
     check("a deleted alias returns 404, not 500", status == 404, str(status))
 
+    # -------------------------------------------------------- adaptive routing
+    adaptive_payload = {
+        "public_model_id": "adaptive-test", "provider_id": providers["openai"]["id"],
+        "upstream_model_id": "gpt-4o-mini",
+        "input_price_per_million": 0.15, "output_price_per_million": 0.60,
+        "strategy": "fastest", "priority": 10}
+    status, _, route_row = jreq("POST", "/admin/routes", adaptive_payload, admin=True)
+    if status == 409:
+        _, _, existing = jreq("GET", "/admin/routes?model=adaptive-test", admin=True)
+        status, _, route_row = jreq("PATCH", f"/admin/routes/{existing[0]['id']}",
+                                    adaptive_payload, admin=True)
+    check("a route can declare a routing strategy",
+          status == 200 and route_row.get("strategy") == "fastest", str(route_row)[:120])
+    status, _, bad = jreq("POST", "/admin/routes", {
+        "public_model_id": "adaptive-bad", "provider_id": providers["openai"]["id"],
+        "upstream_model_id": "gpt-4o-mini", "strategy": "telepathy"}, admin=True)
+    check("an unknown strategy is rejected", status == 400, str(status))
+
+    status, _, body = jreq("POST", "/v1/chat/completions", {
+        "model": "adaptive-test", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("an adaptive route still serves traffic", status == 200, str(status))
+
+    _, _, adaptive_rows = jreq("GET", "/admin/routes?model=adaptive-test", admin=True)
+    adaptive_row = adaptive_rows[0] if adaptive_rows else {}
+    check("route views expose the measured latency",
+          (adaptive_row.get("ewma_latency_ms") or 0) > 0
+          and adaptive_row.get("strategy") == "fastest", str(adaptive_row)[:150])
+
     # ---------------------------------------------------------------- routing
     status, _, models = jreq("GET", "/v1/models", key=key)
     ids = [m["id"] for m in models.get("data", [])]
@@ -548,14 +576,18 @@ def main():
         check("export can be scoped to a project", status == 200 and b"created_at" in csv_bytes, str(status))
 
         # ------------------------------------------------- project rate limits
+        # A dedicated project: the rpm window is per minute, so reusing the budget
+        # project would carry a previous run's counts into this one.
+        slug = "smoke-rpm-" + str(int(time.time()))
+        _, _, rpm_project = jreq("POST", "/admin/projects", {"slug": slug, "name": "Smoke RPM"},
+                                 admin=True)
         status, _, second_key = jreq("POST", "/admin/keys",
-                                     {"name": "project-key-2", "project_id": project["id"]}, admin=True)
+                                     {"name": "project-key-2", "project_id": rpm_project["id"]},
+                                     admin=True)
         check("a project can own several keys", status == 200 and second_key.get("key"), str(status))
 
-        # the project budget test earlier set a 0.000001 daily cap: lift it first
-        jreq("PATCH", f"/admin/projects/{project['id']}",
-             {"daily_limit_usd": 1000, "monthly_limit_usd": 1000,
-              "rpm_limit": 2, "max_concurrent_requests": 8}, admin=True)
+        jreq("PATCH", f"/admin/projects/{rpm_project['id']}",
+             {"rpm_limit": 2, "max_concurrent_requests": 8}, admin=True)
         codes = []
         for _ in range(3):
             code, _, _ = jreq("POST", "/v1/chat/completions",
@@ -574,8 +606,7 @@ def main():
               status == 429 and "Project" in limited.get("error", {}).get("message", ""),
               str(limited)[:120])
 
-        jreq("PATCH", f"/admin/projects/{project['id']}",
-             {"daily_limit_usd": 1000, "monthly_limit_usd": 1000, "rpm_limit": 0}, admin=True)
+        jreq("PATCH", f"/admin/projects/{rpm_project['id']}", {"rpm_limit": 0}, admin=True)
         status, _, _ = jreq("POST", "/v1/chat/completions",
                             {"model": "gpt-4o-mini",
                              "messages": [{"role": "user", "content": "hi"}]},
@@ -583,7 +614,7 @@ def main():
         check("zero project rpm means unlimited", status == 200, str(status))
 
         _, _, refreshed = jreq("GET", "/admin/projects", admin=True)
-        row = next((p for p in refreshed if p["id"] == project["id"]), {})
+        row = next((p for p in refreshed if p["id"] == rpm_project["id"]), {})
         check("project limits are reported by the admin API",
               "rpm_limit" in row and "max_concurrent_requests" in row, str(row)[:200])
 

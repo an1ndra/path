@@ -39,6 +39,12 @@
   those return 422 `unsupported_parameter`.
 - **System-only conversations are rejected.** Anthropic needs a non-empty message list;
   the gateway returns 400 instead of forwarding an empty array.
+- **Routing strategies are opt-in per route.** `strategy` defaults to `priority`, which
+  keeps the declared order. `fastest` orders the chain by exponentially weighted latency
+  (~5-sample half-life); `cheapest-viable` prefers the cheapest route whose EWMA latency
+  is under the route's `latency_slo_ms`, and demotes the rest to fallback. A route with no
+  measurements yet counts as viable, so a cold start cannot deadlock routing. The EWMA is
+  per JVM, like the circuit breaker.
 - **Circuit breaker per provider.** Five consecutive failures park a provider for 30s;
   routes on a parked provider are skipped in microseconds. An upstream 429 with
   `Retry-After` parks it for exactly that long. State appears as `circuit_state` on

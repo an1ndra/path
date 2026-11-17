@@ -55,6 +55,11 @@ public class DataSeeder implements ApplicationRunner {
         } else if (prod && props.isBootstrapDemoKey()) {
             log.warn("Ignoring gateway.bootstrap-demo-key in the prod profile; no demo key created.");
         }
+        if (props.getProxyAuth().isEnabled()) {
+            log.warn("Admin auth is DELEGATED to a reverse proxy ({}): the gateway trusts that "
+                            + "header for /admin/**. It must not be reachable except through the proxy.",
+                    props.getProxyAuth().getHeader());
+        }
         seedState.markReady();
         log.info("Gateway ready. Admin API: {}  |  Public API: /v1/chat/completions, /v1/models",
                 props.getAdminToken() == null || props.getAdminToken().isBlank()

@@ -23,6 +23,7 @@ public class AdminController {
     private final TenancyService tenancy;
     private final AliasService aliasService;
     private final com.anindra.path.config.GatewayProperties props;
+    private final com.anindra.path.gateway.SemanticCacheService semantic;
 
     // ------------------------------------------------------------- providers
 
@@ -246,7 +247,14 @@ public class AdminController {
     @GetMapping("/stats")
     public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window,
                                      @RequestParam(required = false) Long projectId) {
-        return reporting.stats(window, projectId);
+        Map<String, Object> out = reporting.stats(window, projectId);
+        Object cache = out.get("cache");
+        if (cache instanceof Map<?, ?> existing) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) existing;
+            typed.put("semantic_hits", semantic.hitCount());
+        }
+        return out;
     }
 
     @GetMapping("/usage")

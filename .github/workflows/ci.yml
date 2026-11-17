@@ -98,6 +98,7 @@ jobs:
           GATEWAY_ADMIN_TOKEN=test-admin \
           GATEWAY_PROMPT_LOGGING=true \
           GATEWAY_GUARDRAILS_MODERATION=true \
+          GATEWAY_SEMANTIC_MODEL=embed-test \
           java -jar target/path-*.jar \
             > /tmp/opencode/gateway.log 2>&1 &
           for i in $(seq 1 60); do

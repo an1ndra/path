@@ -36,6 +36,7 @@ public class ChatService {
     private final ProviderCircuitBreaker breaker;
     private final RoutingMetrics metrics;
     private final ResponseCacheService cache;
+    private final SemanticCacheService semantic;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
@@ -43,7 +44,8 @@ public class ChatService {
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
                        UsageService usage, ApiKeyService apiKeys, CreditGuard creditGuard,
                        ProviderCircuitBreaker breaker, RoutingMetrics metrics,
-                       ResponseCacheService cache, GatewayProperties props, ObjectMapper mapper,
+                       ResponseCacheService cache, SemanticCacheService semantic,
+                       GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
@@ -54,6 +56,7 @@ public class ChatService {
         this.breaker = breaker;
         this.metrics = metrics;
         this.cache = cache;
+        this.semantic = semantic;
         this.props = props;
         this.mapper = mapper;
         adapterList.forEach(a -> adapters.put(a.type(), a));
@@ -72,6 +75,7 @@ public class ChatService {
         boolean cacheEligible = ResponseCacheService.eligible(spec, chain.get(0).route());
         String cacheKey = cacheEligible
                 ? cache.key(key.getId(), spec.publicModel(), spec.body().toString()) : null;
+        double[] promptVector = null;
         if (cacheKey != null) {
             var hit = cache.lookup(cacheKey);
             if (hit.isPresent()) {
@@ -83,6 +87,25 @@ public class ChatService {
                             elapsedMs(started), "hit");
                 } catch (IOException e) {
                     log.warn("Cached body for {} is unreadable; falling through", spec.publicModel());
+                }
+            }
+
+            // Second tier: only for routes that opted in, and only after an exact miss.
+            if (chain.get(0).route().isSemanticCacheEnabled() && semantic.enabled()) {
+                promptVector = semantic.embed(spec.body().toString(), key);
+                double threshold = chain.get(0).route().getSemanticThreshold() == null
+                        ? 0.95 : chain.get(0).route().getSemanticThreshold().doubleValue();
+                var near = semantic.lookup(key.getId(), spec.publicModel(), promptVector, threshold);
+                if (near.isPresent()) {
+                    ResponseCacheService.Entry entry = entryOf(near.get().entry());
+                    usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                    try {
+                        return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
+                                chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,
+                                elapsedMs(started), "semantic");
+                    } catch (IOException e) {
+                        log.warn("Cached body for {} is unreadable; falling through", spec.publicModel());
+                    }
                 }
             }
         }
@@ -165,8 +188,13 @@ public class ChatService {
                 breaker.onSuccess(providerId);
                 metrics.recordSuccess(rr.providerSlug(), spec.publicModel(), latency);
                 if (cacheKey != null) {
+                    double[] vector = promptVector;
+                    if (vector == null && rr.route().isSemanticCacheEnabled() && semantic.enabled()) {
+                        vector = semantic.embed(spec.body().toString(), key);
+                    }
                     cache.store(cacheKey, key.getId(), spec.publicModel(), rr.providerSlug(),
-                            rr.route(), "application/json", normalized.toString(), tokens, cost);
+                            rr.route(), "application/json", normalized.toString(), tokens, cost,
+                            semantic.encode(vector), vector == null ? null : semantic.model());
                 }
                 return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost,
                         latency, cacheKey == null ? "off" : "miss");
@@ -200,6 +228,13 @@ public class ChatService {
         } finally {
             creditGuard.release(key, reserved);
         }
+    }
+
+    private static ResponseCacheService.Entry entryOf(
+            com.anindra.path.domain.ResponseCacheEntry record) {
+        return new ResponseCacheService.Entry(record.getContentType(), record.getBody(),
+                record.getProviderSlug(), record.getCostUsd(), record.getPromptTokens(),
+                record.getCompletionTokens(), record.getTotalTokens());
     }
 
     /** Used only when a provider returns no usage block at all. */

@@ -131,6 +131,12 @@ public class GatewayProperties {
     public static class Cache {
         /** Responses larger than this are not cached. */
         private int maxBodyBytes = 2_097_152;
+
+        /** Public model used to embed prompts for the semantic tier; blank disables it. */
+        private String semanticModel = "";
+
+        /** How many entries one key+model may hold before the oldest is dropped. */
+        private int semanticMaxEntries = 200;
     }
 
     @Getter

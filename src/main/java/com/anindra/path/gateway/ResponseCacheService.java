@@ -62,7 +62,17 @@ public class ResponseCacheService {
 
     @Transactional
     public void store(String cacheKey, Long clientKeyId, String publicModel, String providerSlug,
-                      ModelRoute route, String contentType, String body, TokenUsage usage, BigDecimal costUsd) {
+                      ModelRoute route, String contentType, String body, TokenUsage usage,
+                      BigDecimal costUsd) {
+        store(cacheKey, clientKeyId, publicModel, providerSlug, route, contentType, body, usage,
+                costUsd, null, null);
+    }
+
+    /** @param embedding prompt vector for the semantic tier; null stores an exact-only entry */
+    @Transactional
+    public void store(String cacheKey, Long clientKeyId, String publicModel, String providerSlug,
+                      ModelRoute route, String contentType, String body, TokenUsage usage,
+                      BigDecimal costUsd, String embedding, String embeddingModel) {
         if (body == null || body.isBlank()
                 || body.getBytes(StandardCharsets.UTF_8).length > props.getCache().getMaxBodyBytes()) {
             return;
@@ -76,6 +86,8 @@ public class ResponseCacheService {
         record.setProviderSlug(providerSlug);
         record.setContentType(contentType);
         record.setBody(body);
+        record.setEmbedding(embedding);
+        record.setEmbeddingModel(embedding == null ? null : embeddingModel);
         record.setPromptTokens(usage == null ? 0 : usage.prompt());
         record.setCompletionTokens(usage == null ? 0 : usage.completion());
         record.setTotalTokens(usage == null ? 0 : usage.total());

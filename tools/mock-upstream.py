@@ -13,12 +13,31 @@ Behaviour switches are driven by the upstream model id in the request body:
   * "empty"       -> stream sends nothing then closes
 """
 import json
+import math
+import re
+import zlib
 import urllib.parse
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9099
+
+
+def _embedding(text, dims=32):
+    """Deterministic bag-of-words vector, so near-duplicate prompts are near in cosine.
+
+    Not a real embedding model — the point is stable, testable geometry: sharing words
+    raises the cosine, sharing none leaves it near zero.
+    """
+    vector = [0.0] * dims
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    for word in words:
+        vector[zlib.crc32(word.encode()) % dims] += 1.0
+    norm = math.sqrt(sum(v * v for v in vector))
+    if norm == 0:
+        return vector
+    return [round(v / norm, 6) for v in vector]
 
 
 def openai_body(model, prompt_tokens=11, completion_tokens=7):
@@ -131,9 +150,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if route.endswith("/embeddings"):
+            text = body.get("input")
+            if isinstance(text, list):
+                text = " ".join(str(t) for t in text)
             self._json(200, {
                 "object": "list",
-                "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
+                "data": [{"object": "embedding", "index": 0,
+                          "embedding": _embedding(str(text or ""))}],
                 "model": model,
                 "usage": {"prompt_tokens": 7, "total_tokens": 7},
             })

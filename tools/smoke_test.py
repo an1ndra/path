@@ -511,6 +511,51 @@ def main():
     check("embeddings reject a different body on the same key",
           status == 409 and conflict["error"]["code"] == "idempotency_conflict", str(status))
 
+    # ------------------------------------------------------- semantic cache
+    _, _, settings = jreq("GET", "/admin/settings", admin=True)
+    # enable both tiers on a deterministic route
+    _, _, cache_routes = jreq("GET", "/admin/routes?model=gpt-4o-mini", admin=True)
+    if cache_routes:
+        jreq("PATCH", f"/admin/routes/{cache_routes[0]['id']}",
+             {"cache_enabled": True, "semantic_cache_enabled": True,
+              "semantic_threshold": 0.9}, admin=True)
+
+    base_prompt = "summarise the quarterly report for the board meeting"
+    _, headers_a, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "temperature": 0,
+        "messages": [{"role": "user", "content": base_prompt}]}, key=key)
+    # A warm database may already hold this prompt, so only the header's presence matters.
+    check("a deterministic request reports its cache state",
+          headers_a.get("X-Path-Cache") is not None, str(headers_a.get("X-Path-Cache")))
+
+    _, headers_b, body_b = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "temperature": 0,
+        "messages": [{"role": "user", "content": base_prompt}]}, key=key)
+    check("an identical request is an exact cache hit",
+          headers_b.get("X-Path-Cache") == "hit", str(headers_b.get("X-Path-Cache")))
+
+    _, headers_c, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "temperature": 0,
+        "messages": [{"role": "user", "content": base_prompt + " please"}]}, key=key)
+    check("a near duplicate is served from the semantic tier",
+          headers_c.get("X-Path-Cache") == "semantic", str(headers_c.get("X-Path-Cache")))
+
+    _, headers_d, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "temperature": 0,
+        "messages": [{"role": "user", "content": "what is the weather in Paris"}]}, key=key)
+    check("an unrelated prompt is not a semantic hit",
+          headers_d.get("X-Path-Cache") != "semantic", str(headers_d.get("X-Path-Cache")))
+
+    # Leave the route as a warm run expects to find it: exact cache on, semantic off.
+    if cache_routes:
+        jreq("PATCH", f"/admin/routes/{cache_routes[0]['id']}",
+             {"semantic_cache_enabled": False}, admin=True)
+
+    _, _, stats_now = jreq("GET", "/admin/stats?window=1h", admin=True)
+    check("stats report semantic cache hits",
+          isinstance(stats_now.get("cache"), dict) and "semantic_hits" in stats_now["cache"],
+          str(stats_now.get("cache"))[:120])
+
     # ------------------------------------------------------- end-user billing
     status, _, eu_key = jreq("POST", "/admin/keys", {
         "name": "end-user-key", "end_user_daily_limit_usd": 1000}, admin=True)

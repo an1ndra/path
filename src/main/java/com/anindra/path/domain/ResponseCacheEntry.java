@@ -39,6 +39,13 @@ public class ResponseCacheEntry {
     @Column(columnDefinition = "text")
     private String body;
 
+    /** Comma-separated vector of the prompt that produced this entry; null for exact-only. */
+    @Column(columnDefinition = "text")
+    private String embedding;
+
+    @Column(length = 120)
+    private String embeddingModel;
+
     private int promptTokens;
     private int completionTokens;
     private int totalTokens;

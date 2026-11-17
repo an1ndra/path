@@ -48,6 +48,19 @@
   those return 422 `unsupported_parameter`.
 - **System-only conversations are rejected.** Anthropic needs a non-empty message list;
   the gateway returns 400 instead of forwarding an empty array.
+- **Semantic tier sits above the exact cache and is off by default.** With
+  `semantic_cache_enabled` on a route and `GATEWAY_SEMANTIC_MODEL` set, a request that
+  misses the exact lookup is embedded and matched against stored entries by cosine
+  similarity (default threshold 0.95, per route). Every exact-cache rule still applies:
+  the route opted into caching, the request is `temperature: 0`, tool-free, and entries
+  are scoped per client key. It is off by default because a hit here answers a *different*
+  prompt.
+- **The semantic tier costs an embedding call per lookup.** That is why it is opt-in: the
+  gateway embeds the prompt before it can know whether anything is similar. Candidates
+  are bounded by `GATEWAY_SEMANTIC_MAX_ENTRIES` per key and model, so the comparison is a
+  small scan rather than a table scan; a large deployment wants an ANN index instead.
+- **The semantic tier serves non-streaming requests only.** Streaming still gets the exact
+  tier, which is byte-identical and cheaper to reason about.
 - **Azure OpenAI is a provider shape, not a provider type.** Setting `api_version` on a
   provider switches three things: the deployment name goes in the path
   (`/openai/deployments/<upstream_model_id>/chat/completions`), the version goes in

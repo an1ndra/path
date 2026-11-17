@@ -56,6 +56,8 @@ public class AdminService {
                              Integer weight,
                              @JsonAlias("cacheEnabled") Boolean cacheEnabled,
                              @JsonAlias("cacheTtlSeconds") Integer cacheTtlSeconds,
+                             @JsonAlias("semanticCacheEnabled") Boolean semanticCacheEnabled,
+                             @JsonAlias("semanticThreshold") java.math.BigDecimal semanticThreshold,
                              @JsonAlias("contextLength") Integer contextLength,
                              @JsonAlias("supportsStreaming") Boolean supportsStreaming,
                              @JsonAlias("supportsTools") Boolean supportsTools,
@@ -352,6 +354,17 @@ public class AdminService {
         if (in.cacheTtlSeconds() != null) {
             route.setCacheTtlSeconds(in.cacheTtlSeconds());
         }
+        if (in.semanticCacheEnabled() != null) {
+            route.setSemanticCacheEnabled(in.semanticCacheEnabled());
+        }
+        if (in.semanticThreshold() != null) {
+            double threshold = in.semanticThreshold().doubleValue();
+            if (threshold < 0.5 || threshold > 1.0) {
+                throw ApiException.badRequest(
+                        "'semantic_threshold' must be between 0.5 and 1.0.", "semantic_threshold");
+            }
+            route.setSemanticThreshold(in.semanticThreshold());
+        }
         if (in.contextLength() != null) {
             route.setContextLength(in.contextLength());
         }
@@ -394,6 +407,8 @@ public class AdminService {
         view.put("supports_tools", r.isSupportsTools());
         view.put("enabled", r.isEnabled());
         view.put("weight", r.getWeight());
+        view.put("semantic_cache_enabled", r.isSemanticCacheEnabled());
+        view.put("semantic_threshold", r.getSemanticThreshold());
         view.put("strategy", r.getStrategy());
         double ewma = routingMetrics.latencyMs(providerSlug, r.getPublicModelId());
         view.put("ewma_latency_ms", Double.isNaN(ewma) ? null : Math.round(ewma));

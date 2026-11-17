@@ -78,6 +78,14 @@ public class ModelRoute {
     @Column(nullable = false)
     private boolean cacheEnabled = false;
 
+    /** Second cache tier: a near-duplicate prompt may reuse an entry. Opt-in per route. */
+    @Column(nullable = false)
+    private boolean semanticCacheEnabled = false;
+
+    /** Cosine similarity a candidate must reach. 0.95 is deliberately strict. */
+    @Column(precision = 4, scale = 3, nullable = false)
+    private java.math.BigDecimal semanticThreshold = new java.math.BigDecimal("0.950");
+
     @Column(nullable = false)
     private int cacheTtlSeconds = 3600;
 

@@ -63,6 +63,8 @@ gateway:
     open-duration: ${GATEWAY_BREAKER_OPEN:30s}
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
   cache:
+    semantic-model: ${GATEWAY_SEMANTIC_MODEL:}
+    semantic-max-entries: ${GATEWAY_SEMANTIC_MAX_ENTRIES:200}
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}

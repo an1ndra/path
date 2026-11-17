@@ -87,9 +87,11 @@ jobs:
           # CRITICAL blocks the release; HIGH is visible in the scan output but the
           # Debian base image rotates packages too often to gate on it.
           #
-          # The ignore file is passed explicitly: its YAML form (which supports an
-          # expiry date, so an exception cannot rot) is not auto-detected.
-          ignorefile: .trivyignore.yaml
+          # trivy-action's input is `trivyignores` (plural, comma-separated), not the
+          # CLI's `--ignorefile`; passing the wrong name is only a warning, so the scan
+          # silently ran without the exceptions. The YAML form is not auto-detected, so
+          # it has to be named explicitly.
+          trivyignores: .trivyignore.yaml
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true

@@ -104,7 +104,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "bad request from client", "type": "invalid_request"}})
             return
 
-        if self.path.endswith("/messages"):
+        if self.path.endswith("/embeddings"):
+            self._json(200, {
+                "object": "list",
+                "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
+                "model": model,
+                "usage": {"prompt_tokens": 7, "total_tokens": 7},
+            })
+        elif self.path.endswith("/messages"):
             self._anthropic(model, stream)
         else:
             self._openai(model, stream)

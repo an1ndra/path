@@ -234,6 +234,7 @@ Admin JSON accepts snake_case (`credit_limit_usd`) and camelCase (`creditLimitUs
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/v1/chat/completions` | bearer key | chat, `stream: true` for SSE |
+| POST | `/v1/embeddings` | bearer key | embeddings, OpenAI-compatible providers only |
 | GET | `/v1/models` | none if `gateway.public-models=true` | catalogue |
 | GET | `/v1/models/{id}` | same | one model |
 | GET | `/v1/usage?window=24h` | bearer key | this key's tokens, spend, recent calls |
@@ -331,6 +332,15 @@ entity and the database disagree.
   running install does not drop data.
 - Tests run the same migrations against in-memory H2, so a broken migration fails CI.
 
+## Load testing
+
+```bash
+k6 run -e BASE=http://127.0.0.1:8080 -e KEY=sk-gw-... tools/load-test.js
+```
+
+Two scenarios (steady chat + a streaming arrival rate) with thresholds on error rate and
+p95 latency, so a regression fails the run.
+
 ## Tests
 
 ```bash
@@ -399,8 +409,10 @@ python3 tools/smoke_test.py        # 49 checks
   eighth decimal (USD 1e-8).
 - **Streaming has no resume.** Once bytes are sent the route cannot change; failures
   arrive as an SSE error object followed by `data: [DONE]`.
-- **Chat only.** Like OpenRouter, this gateway does not proxy embeddings/images/audio;
-  the adapters are written around chat-completions.
+- **Embeddings are OpenAI-compatible only.** `POST /v1/embeddings` routes through the
+  same chain, priced on input tokens; an Anthropic route returns 501
+  `unsupported_endpoint`.
+- **Images and audio are not proxied.** Chat and embeddings cover the common cases.
 - **Anthropic tool translation** covers text, images (base64 and URL), tools,
   tool results, `tool_choice` and `parallel_tool_calls`. Anthropic-specific betas,
   prompt caching and extended thinking blocks are not forwarded.

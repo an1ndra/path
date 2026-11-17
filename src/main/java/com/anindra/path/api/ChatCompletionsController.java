@@ -42,6 +42,7 @@ public class ChatCompletionsController {
 
     private final ChatService chatService;
     private final StreamService streamService;
+    private final com.anindra.path.gateway.EmbeddingsService embeddings;
     private final ModelCatalogService catalog;
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
@@ -184,6 +185,23 @@ public class ChatCompletionsController {
                     "Idempotency-Key must be at most 255 characters.", IDEMPOTENCY_HEADER);
         }
         return value;
+    }
+
+    @Operation(summary = "Create embeddings", description = "OpenAI-compatible providers only")
+    @PostMapping("/embeddings")
+    public ResponseEntity<?> embeddings(
+            @RequestBody ObjectNode body,
+            @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key) {
+        if (key == null) {
+            throw ApiException.unauthorized(
+                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+        }
+        var result = embeddings.embed(body, key);
+        return ResponseEntity.ok()
+                .header("X-Gateway-Provider", result.providerSlug())
+                .header("X-Gateway-Upstream-Model", result.upstreamModel())
+                .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
+                .body(result.body());
     }
 
     @Operation(summary = "List the model catalogue")

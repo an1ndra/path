@@ -360,6 +360,29 @@ def main():
           and any(e.get("action") == "key.create" for e in audit_rows),
           str(status) + str(audit_rows)[:120])
 
+    # ------------------------------------------------------------- embeddings
+    payload = {"public_model_id": "embed-test", "provider_id": providers["openai"]["id"],
+               "upstream_model_id": "text-embedding-3-small",
+               "input_price_per_million": 0.02, "output_price_per_million": 0.0}
+    status, _, created = jreq("POST", "/admin/routes", payload, admin=True)
+    if status == 409:
+        _, _, existing = jreq("GET", "/admin/routes?model=embed-test", admin=True)
+        for route in existing:
+            jreq("PATCH", f"/admin/routes/{route['id']}", payload, admin=True)
+
+    status, eheaders, ebody = jreq("POST", "/v1/embeddings", {
+        "model": "embed-test", "input": "hello"}, key=key)
+    check("embeddings endpoint returns vectors",
+          status == 200 and ebody.get("data") and ebody["data"][0].get("embedding"),
+          str(status) + str(ebody)[:120])
+    check("embeddings are metered", float(eheaders.get("X-Gateway-Cost-Usd", "0")) > 0,
+          str(eheaders.get("X-Gateway-Cost-Usd")))
+
+    status, _, ebody = jreq("POST", "/v1/embeddings", {
+        "model": "claude-3.5-haiku", "input": "hello"}, key=key)
+    check("embeddings reject Anthropic routes", status == 501
+          and ebody["error"]["code"] == "unsupported_endpoint", str(status))
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

@@ -53,6 +53,7 @@ public final class ChatRequestSpec {
         if (messages == null || !messages.isArray() || messages.isEmpty()) {
             throw ApiException.badRequest("'messages' must be a non-empty array.", "messages");
         }
+        boolean hasConversationalTurn = false;
         for (JsonNode message : messages) {
             if (!message.isObject() || !message.hasNonNull("role")) {
                 throw ApiException.badRequest("Every message needs a 'role'.", "messages");
@@ -61,11 +62,18 @@ public final class ChatRequestSpec {
             if (!ROLES.contains(role)) {
                 throw ApiException.badRequest("Unsupported message role: " + role, "messages");
             }
+            if (!role.equals("system") && !role.equals("developer")) {
+                hasConversationalTurn = true;
+            }
             JsonNode content = message.get("content");
             if (content != null && !content.isNull() && !content.isTextual() && !content.isArray()) {
                 throw ApiException.badRequest(
                         "message.content must be a string or an array of content parts.", "messages");
             }
+        }
+        if (!hasConversationalTurn) {
+            throw ApiException.badRequest(
+                    "'messages' must contain at least one non-system message.", "messages");
         }
 
         List<String> models = new ArrayList<>();

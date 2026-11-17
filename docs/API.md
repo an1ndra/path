@@ -54,6 +54,7 @@ Every failure uses the OpenAI envelope:
 | `idempotency_conflict` | 409 | same `Idempotency-Key`, different body |
 | `idempotency_in_progress` | 409 | duplicate while the first attempt is running |
 | `shutting_down` | 503 | instance is draining; retry elsewhere |
+| `unsupported_endpoint` | 501 | endpoint not available for this provider type |
 | `route_exists` / `provider_exists` | 409 | duplicate admin create |
 
 ---
@@ -167,6 +168,19 @@ data: [DONE]
 
 **Tool calls** are passed through for OpenAI-shaped providers and translated to
 `tool_use` / `tool_result` blocks for Anthropic.
+
+### `POST /v1/embeddings`
+
+OpenAI-shaped embeddings. Only `OPENAI`-type providers are supported; an Anthropic route
+returns `501 unsupported_endpoint`.
+
+```bash
+curl -s http://localhost:8080/v1/embeddings \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"text-embedding-3-small","input":"hello"}'
+```
+
+Metered on input tokens only, with the same headers as chat.
 
 ### `GET /v1/models`
 

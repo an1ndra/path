@@ -4,10 +4,13 @@
 [![Release](https://github.com/an1ndra/path/actions/workflows/release.yml/badge.svg)](https://github.com/an1ndra/path/actions/workflows/release.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-A provider-agnostic LLM gateway. One HTTP surface in front of every provider you use —
-OpenAI, Anthropic, Groq, Google Gemini, and anything OpenAI-compatible — with model
-routing, automatic fallback, per-key credits and cache-aware token metering.
-Spring Boot 3.5, Java 21.
+**The LLM gateway for teams that run Java.** A provider-agnostic gateway — one HTTP
+surface in front of OpenAI, Anthropic, Groq, Google Gemini and anything
+OpenAI-compatible — with model routing, automatic fallback, per-key credits and
+cache-aware token metering. Spring Boot 3.5, Java 21, one process to operate.
+
+New here? [Why Path](docs/WHY-PATH.md) compares it honestly with LiteLLM, Portkey and
+OpenRouter, including where it loses.
 
 Clients speak the OpenAI chat-completions shape because that is what most SDKs already
 implement. The gateway translates to each provider's native protocol, so adding or
@@ -89,7 +92,8 @@ print(client.chat.completions.create(
 | [Operations](docs/OPERATIONS.md) | Admin API, metrics, tracing, migrations, alerts, load testing |
 | [Limits](docs/LIMITS.md) | Design decisions and known gaps |
 | [Testing](docs/TESTING.md) | Unit tests, the 99-check smoke suite, the mock upstream |
-| [Roadmap](docs/ROADMAP.md) | Delivered work and the three open stories |
+| [Why Path](docs/WHY-PATH.md) | Honest comparison and a 60-second demo |
+| [Roadmap](docs/ROADMAP.md) | Delivered work and the open stories |
 | [Changelog](CHANGELOG.md) | Release notes, also used as the GitHub release body |
 | [Security policy](SECURITY.md) | How to report a vulnerability and what CI checks |
 | [AGENTS.md](AGENTS.md) | Contributor conventions and gotchas |

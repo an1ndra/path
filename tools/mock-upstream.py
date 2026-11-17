@@ -13,6 +13,7 @@ Behaviour switches are driven by the upstream model id in the request body:
   * "empty"       -> stream sends nothing then closes
 """
 import json
+import urllib.parse
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -90,6 +91,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self._read()
         model = str(body.get("model", ""))
+        # Azure puts the version in a query string, so suffix checks need the bare path.
+        route = urllib.parse.urlparse(self.path).path
+
+        # Azure shape: /openai/deployments/<name>/chat/completions?api-version=...
+        if "/openai/deployments/" in route:
+            query = urllib.parse.urlparse(self.path).query
+            version = urllib.parse.parse_qs(query).get("api-version", [""])[0]
+            if version != "2024-10-21" and "/moderations" not in route:
+                self._json(400, {"error": {
+                    "message": "API version not supported: " + (version or "(none)"),
+                    "type": "invalid_request_error", "code": "invalid_api_version"}})
+                return
+            if not self.headers.get("api-key"):
+                self._json(401, {"error": {"message": "missing api-key", "code": "401"}})
+                return
         stream = bool(body.get("stream"))
 
         if "boom" in model:
@@ -105,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "bad request from client", "type": "invalid_request"}})
             return
 
-        if self.path.endswith("/moderations"):
+        if route.endswith("/moderations"):
             text = str(body.get("input", ""))
             flagged = "flag-me" in text
             self._json(200, {"id": "modr-mock", "model": body.get("model"),
@@ -114,14 +130,14 @@ class Handler(BaseHTTPRequestHandler):
                                  "hate": False, "self-harm": False}}]})
             return
 
-        if self.path.endswith("/embeddings"):
+        if route.endswith("/embeddings"):
             self._json(200, {
                 "object": "list",
                 "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
                 "model": model,
                 "usage": {"prompt_tokens": 7, "total_tokens": 7},
             })
-        elif self.path.endswith("/messages"):
+        elif route.endswith("/messages"):
             self._anthropic(model, stream)
         else:
             self._openai(model, stream)

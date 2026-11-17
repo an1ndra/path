@@ -38,6 +38,7 @@ public class AdminService {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ProviderInput(String slug, @JsonAlias("displayName") String displayName, String type,
                                 @JsonAlias("baseUrl") String baseUrl, @JsonAlias("apiKey") String apiKey,
+                                @JsonAlias("apiVersion") String apiVersion,
                                 @JsonAlias("requestTimeoutMs") Integer requestTimeoutMs,
                                 @JsonAlias("streamIdleTimeoutMs") Integer streamIdleTimeoutMs,
                                 Boolean enabled) {
@@ -108,6 +109,7 @@ public class AdminService {
                 ? in.slug().trim() : in.displayName().trim());
         p.setType(parseType(in.type()));
         p.setBaseUrl(requireBaseUrl(in.baseUrl()));
+        p.setApiVersion(in.apiVersion() == null || in.apiVersion().isBlank() ? null : in.apiVersion().trim());
         p.setEnabled(in.enabled() == null || in.enabled());
         p.setRequestTimeoutMs(in.requestTimeoutMs());
         p.setStreamIdleTimeoutMs(in.streamIdleTimeoutMs());
@@ -130,6 +132,10 @@ public class AdminService {
         }
         if (in.baseUrl() != null && !in.baseUrl().isBlank()) {
             p.setBaseUrl(requireBaseUrl(in.baseUrl()));
+        }
+        if (in.apiVersion() != null) {
+            // Blank clears it: the provider goes back to the plain OpenAI shape.
+            p.setApiVersion(in.apiVersion().isBlank() ? null : in.apiVersion().trim());
         }
         if (in.enabled() != null) {
             p.setEnabled(in.enabled());
@@ -163,6 +169,7 @@ public class AdminService {
         view.put("display_name", p.getDisplayName());
         view.put("type", p.getType().name());
         view.put("base_url", p.getBaseUrl());
+        view.put("api_version", p.getApiVersion());
         view.put("enabled", p.isEnabled());
         view.put("credential_source", credentials.source(p));
         view.put("credential_configured", credentials.apiKey(p) != null);

@@ -72,8 +72,10 @@ public class ModerationService {
 
         UpstreamClient.Response response;
         try {
-            response = upstream.postJson(provider.getBaseUrl() + "/moderations",
-                    Map.of("Authorization", "Bearer " + apiKey, "Content-Type", "application/json"),
+            Map<String, String> headers = ProviderUrls.headers(provider, apiKey, false);
+            headers.put("Content-Type", "application/json");
+            response = upstream.postJson(ProviderUrls.moderation(provider),
+                    headers,
                     payload.toString(), Duration.ofMillis(provider.getRequestTimeoutMs() == null
                             ? 5_000 : Math.min(provider.getRequestTimeoutMs(), 10_000)));
         } catch (Exception e) {

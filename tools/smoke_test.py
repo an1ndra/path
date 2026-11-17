@@ -380,6 +380,46 @@ def main():
         "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
     check("a deleted alias returns 404, not 500", status == 404, str(status))
 
+    # --------------------------------------------------------- azure openai
+    status, _, azure = jreq("POST", "/admin/providers", {
+        "slug": "azure-test", "display_name": "Azure (mock)",
+        "type": "openai", "base_url": MOCK.replace("/v1", ""),
+        "api_key": "azure-secret", "api_version": "2024-10-21"}, admin=True)
+    check("an Azure OpenAI provider can be created",
+          status in (200, 409) and (status == 409 or azure.get("api_version") == "2024-10-21"),
+          str(status) + str(azure)[:120])
+    if status == 409:
+        _, _, found = jreq("GET", "/admin/providers", admin=True)
+        azure = next(p for p in found if p["slug"] == "azure-test")
+        jreq("PATCH", f"/admin/providers/{azure['id']}",
+             {"api_version": "2024-10-21", "base_url": MOCK.replace("/v1", "")}, admin=True)
+
+    payload = {"public_model_id": "azure-test", "provider_id": azure["id"],
+               "upstream_model_id": "deployment-prod",
+               "input_price_per_million": 0.15, "output_price_per_million": 0.6}
+    status, _, _ = jreq("POST", "/admin/routes", payload, admin=True)
+    if status == 409:
+        _, _, existing = jreq("GET", "/admin/routes?model=azure-test", admin=True)
+        jreq("PATCH", f"/admin/routes/{existing[0]['id']}", payload, admin=True)
+
+    status, headers, body = jreq("POST", "/v1/chat/completions", {
+        "model": "azure-test", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("an Azure route serves traffic with a deployment name",
+          status == 200 and headers.get("X-Gateway-Provider") == "azure-test", str(status))
+
+    status, _, _ = jreq("POST", "/v1/embeddings", {
+        "model": "azure-test", "input": "hello"}, key=key)
+    check("embeddings work on an Azure route", status == 200, str(status))
+
+    # A wrong api-version must surface Azure's message, not a generic 502.
+    jreq("PATCH", f"/admin/providers/{azure['id']}", {"api_version": "1999-01-01"}, admin=True)
+    status, _, bad = jreq("POST", "/v1/chat/completions", {
+        "model": "azure-test", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("a bad api-version surfaces the provider message",
+          status >= 400 and "API version" in str(bad.get("error", {}).get("message", "")),
+          str(status) + str(bad)[:120])
+    jreq("PATCH", f"/admin/providers/{azure['id']}", {"api_version": "2024-10-21"}, admin=True)
+
     # -------------------------------------------------------- adaptive routing
     adaptive_payload = {
         "public_model_id": "adaptive-test", "provider_id": providers["openai"]["id"],

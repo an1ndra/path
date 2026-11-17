@@ -35,6 +35,14 @@ public class Provider {
     @Column(nullable = false, length = 512)
     private String baseUrl;
 
+    /**
+     * When set, this provider is an Azure OpenAI resource: the deployment name goes in the
+     * path, this value goes in {@code ?api-version}, and auth uses the {@code api-key}
+     * header. Null means a plain OpenAI-compatible endpoint.
+     */
+    @Column(length = 32)
+    private String apiVersion;
+
     /** AES-GCM encrypted upstream credential. Null falls back to the environment. */
     @Column(length = 2048)
     private String apiKeyCipher;

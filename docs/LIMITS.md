@@ -48,6 +48,14 @@
   those return 422 `unsupported_parameter`.
 - **System-only conversations are rejected.** Anthropic needs a non-empty message list;
   the gateway returns 400 instead of forwarding an empty array.
+- **Azure OpenAI is a provider shape, not a provider type.** Setting `api_version` on a
+  provider switches three things: the deployment name goes in the path
+  (`/openai/deployments/<upstream_model_id>/chat/completions`), the version goes in
+  `?api-version`, and auth uses the `api-key` header instead of a bearer token. The route
+  table therefore maps a public model to an Azure *deployment*, which is what Azure
+  actually requires. The provider probe uses the deployment listing, because Azure has no
+  `/models`, and an unsupported version surfaces Azure's own message rather than a
+  generic 502.
 - **Routing strategies are opt-in per route.** `strategy` defaults to `priority`, which
   keeps the declared order. `fastest` orders the chain by exponentially weighted latency
   (~5-sample half-life); `cheapest-viable` prefers the cheapest route whose EWMA latency

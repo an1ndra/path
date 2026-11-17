@@ -47,12 +47,13 @@ public class ProviderProbeService {
             headers.put("x-api-key", apiKey);
             headers.put("anthropic-version", "2023-06-01");
         } else {
-            headers.put("Authorization", "Bearer " + apiKey);
+            headers.putAll(com.anindra.path.gateway.ProviderUrls.headers(provider, apiKey, false));
         }
 
         long start = System.nanoTime();
         try {
-            UpstreamClient.Response response = upstream.get(provider.getBaseUrl() + "/models", headers);
+            UpstreamClient.Response response = upstream.get(
+                    com.anindra.path.gateway.ProviderUrls.models(provider), headers);
             long latency = (System.nanoTime() - start) / 1_000_000;
             out.put("ok", response.ok());
             out.put("status", response.status());

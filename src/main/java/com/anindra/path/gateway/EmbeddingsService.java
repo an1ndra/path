@@ -76,11 +76,11 @@ public class EmbeddingsService {
                            String model, long started) {
         ObjectNode body = request.deepCopy();
         body.put("model", resolved.route().getUpstreamModelId());
-        Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("Authorization", "Bearer " + apiKey);
+        Map<String, String> headers = ProviderUrls.headers(provider, apiKey, false);
         try {
             UpstreamClient.Response response = upstream.postJson(
-                    provider.getBaseUrl() + "/embeddings", headers, body.toString());
+                    ProviderUrls.embeddings(provider, resolved.route().getUpstreamModelId()),
+                    headers, body.toString());
             if (!response.ok()) {
                 throw ChatService.toApiException(UpstreamClient.mapError(
                         response.status(), response.body(), response.headers()));

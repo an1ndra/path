@@ -66,10 +66,8 @@ services:
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
       GATEWAY_API_DOCS: "false"
-    # Optional provider keys; they can also be added later through the console.
-    env_file:
-      - path: .env.providers
-        required: false
+    # Provider keys are added through the console (Settings → Providers) or as
+    # OPENAI_API_KEY / ANTHROPIC_API_KEY / GROQ_API_KEY / GEMINI_API_KEY.
     ports:
       - "8080:8080"
     # More than the drain timeout, or a redeploy truncates live streams.

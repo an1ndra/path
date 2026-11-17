@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /** A tenant grouping for keys and usage. */
@@ -24,6 +25,15 @@ public class Project {
 
     @Column(nullable = false, length = 128)
     private String name;
+
+    @Column(precision = 18, scale = 6)
+    private BigDecimal creditLimitUsd;
+
+    @Column(precision = 18, scale = 6)
+    private BigDecimal dailyLimitUsd;
+
+    @Column(precision = 18, scale = 6)
+    private BigDecimal monthlyLimitUsd;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();

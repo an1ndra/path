@@ -108,7 +108,7 @@ public class ChatCompletionsController {
         }
 
         if (spec.stream()) {
-            return streamCompletion(spec, key, idempotencyKey, requestHash, response);
+            return streamCompletion(spec, key, idempotencyKey, requestHash, body.toString(), response);
         }
 
         ChatService.Result result;
@@ -138,7 +138,8 @@ public class ChatCompletionsController {
     }
 
     private ResponseEntity<?> streamCompletion(ChatRequestSpec spec, ClientKey key, String idempotencyKey,
-                                               String requestHash, HttpServletResponse response)
+                                               String requestHash, String requestBody,
+                                               HttpServletResponse response)
             throws IOException {
 
         StreamService.Prepared prepared;
@@ -151,24 +152,31 @@ public class ChatCompletionsController {
 
         try {
             List<RouteResolver.ResolvedRoute> chain = prepared.chain();
-            if (idempotencyKey == null) {
+            boolean capture = idempotencyKey != null || promptLogs.enabled();
+            if (!capture) {
                 streamService.stream(response, spec, key, chain);
                 return null;
             }
 
-            CapturingResponseWrapper capture =
+            CapturingResponseWrapper wrapper =
                     new CapturingResponseWrapper(response, props.getIdempotency().getMaxResponseBytes());
             boolean completed;
             try {
-                completed = streamService.stream(capture, spec, key, chain);
+                completed = streamService.stream(wrapper, spec, key, chain);
             } catch (RuntimeException e) {
                 abandon(idempotencyKey, key);
                 throw e;
             }
 
-            if (completed && !capture.overflowed()) {
-                idempotency.complete(key.getId(), idempotencyKey, 200,
-                        "text/event-stream", capture.body());
+            if (completed && !wrapper.overflowed()) {
+                if (idempotencyKey != null) {
+                    idempotency.complete(key.getId(), idempotencyKey, 200,
+                            "text/event-stream", wrapper.body());
+                }
+                if (promptLogs.enabled()) {
+                    promptLogs.record(key.getId(), org.slf4j.MDC.get("requestId"), spec.publicModel(),
+                            requestBody, wrapper.body());
+                }
             } else {
                 // Not replayable: release the claim so a retry can run.
                 abandon(idempotencyKey, key);

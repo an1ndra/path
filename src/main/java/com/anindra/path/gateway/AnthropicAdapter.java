@@ -225,10 +225,17 @@ public class AnthropicAdapter implements ProviderAdapter {
                     for (JsonNode part : content) {
                         String type = part.path("type").asText("text");
                         if (type.equals("text")) {
-                            blocks.addObject().put("type", "text").put("text", part.path("text").asText());
+                            ObjectNode textBlock = blocks.addObject()
+                                    .put("type", "text").put("text", part.path("text").asText());
+                            if (part.has("cache_control")) {
+                                textBlock.set("cache_control", part.get("cache_control"));
+                            }
                         } else if (type.equals("image_url")) {
                             ObjectNode image = imageBlock(part.path("image_url").path("url").asText(""));
                             if (image != null) {
+                                if (part.has("cache_control")) {
+                                    image.set("cache_control", part.get("cache_control"));
+                                }
                                 blocks.add(image);
                             }
                         }

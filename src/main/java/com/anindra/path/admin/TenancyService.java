@@ -41,8 +41,29 @@ public class TenancyService {
     private final ProjectRepository projects;
     private final AdminTokenRepository tokens;
     private final ClientKeyRepository keys;
+    private final com.anindra.path.gateway.UsageService usage;
 
     // ------------------------------------------------------------- projects
+
+    public Map<String, Object> projectSummary(Long projectId) {
+        Project project = projects.findById(projectId)
+                .orElseThrow(() -> ApiException.notFound("No project with id " + projectId, "project_not_found"));
+        java.time.Instant dayStart = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+                .atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        java.time.Instant monthStart = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+                .withDayOfMonth(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("project", project.getSlug());
+        out.put("key_count", keys.findByProjectIdOrderByCreatedAtDesc(projectId).size());
+        out.put("spend_today_usd", usage.spendForProject(projectId, dayStart));
+        out.put("spend_month_usd", usage.spendForProject(projectId, monthStart));
+        out.put("spend_total_usd", usage.spendForProject(projectId, java.time.Instant.EPOCH));
+        out.put("credit_limit_usd", project.getCreditLimitUsd());
+        out.put("daily_limit_usd", project.getDailyLimitUsd());
+        out.put("monthly_limit_usd", project.getMonthlyLimitUsd());
+        return out;
+    }
 
     public List<Map<String, Object>> listProjects() {
         List<Map<String, Object>> out = new ArrayList<>();
@@ -52,6 +73,9 @@ public class TenancyService {
             row.put("slug", project.getSlug());
             row.put("name", project.getName());
             row.put("created_at", project.getCreatedAt().toString());
+            row.put("credit_limit_usd", project.getCreditLimitUsd());
+            row.put("daily_limit_usd", project.getDailyLimitUsd());
+            row.put("monthly_limit_usd", project.getMonthlyLimitUsd());
             row.put("key_count", keys.findByProjectIdOrderByCreatedAtDesc(project.getId()).size());
             out.add(row);
         }
@@ -59,7 +83,10 @@ public class TenancyService {
     }
 
     @Transactional
-    public Map<String, Object> createProject(String slug, String name) {
+    public Map<String, Object> createProject(String slug, String name,
+                                             java.math.BigDecimal creditLimit,
+                                             java.math.BigDecimal dailyLimit,
+                                             java.math.BigDecimal monthlyLimit) {
         if (slug == null || slug.isBlank()) {
             throw ApiException.badRequest("slug is required", "slug");
         }
@@ -69,10 +96,32 @@ public class TenancyService {
         }
         Project project = new Project(slug.trim().toLowerCase(),
                 name == null || name.isBlank() ? slug.trim() : name.trim());
+        project.setCreditLimitUsd(creditLimit);
+        project.setDailyLimitUsd(dailyLimit);
+        project.setMonthlyLimitUsd(monthlyLimit);
         projects.save(project);
         return listProjects().stream()
                 .filter(p -> project.getId().equals(p.get("id")))
                 .findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public Map<String, Object> updateProjectLimits(Long id, java.math.BigDecimal creditLimit,
+                                                   java.math.BigDecimal dailyLimit,
+                                                   java.math.BigDecimal monthlyLimit) {
+        Project project = projects.findById(id)
+                .orElseThrow(() -> ApiException.notFound("No project with id " + id, "project_not_found"));
+        if (creditLimit != null) {
+            project.setCreditLimitUsd(creditLimit);
+        }
+        if (dailyLimit != null) {
+            project.setDailyLimitUsd(dailyLimit);
+        }
+        if (monthlyLimit != null) {
+            project.setMonthlyLimitUsd(monthlyLimit);
+        }
+        projects.save(project);
+        return projectSummary(id);
     }
 
     @Transactional

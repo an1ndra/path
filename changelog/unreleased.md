@@ -5,7 +5,12 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Added
 
-- Nothing yet.
+- Project-level lifetime, daily and monthly budgets, enforced across every key in the
+  project, plus `GET /admin/projects/{id}/usage` rollups.
+- Streaming prompt logs: the captured SSE payload is stored alongside non-streaming
+  bodies (still redacted and capped).
+- Anthropic `cache_control` markers on text and image parts are forwarded, enabling
+  provider-side prompt caching.
 
 ## Changed
 
@@ -13,7 +18,8 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Fixed
 
-- Nothing yet.
+- `docs/LIMITS.md` gaps that were fixable: project billing, streaming prompt logs and
+  Anthropic prompt caching. The rest are now documented as per-node or provider-inherent.
 
 ## Security
 

@@ -217,6 +217,11 @@ public class UsageService {
         return nz(usage.sumCostForKeySince(keyId, from));
     }
 
+    /** Spend across every key in a project since a timestamp. */
+    public BigDecimal spendForProject(Long projectId, Instant from) {
+        return nz(usage.sumCostForProjectSince(projectId, from));
+    }
+
     public Map<String, Object> keySummary(ClientKey key, Duration window) {
         Instant from = Instant.now().minus(window);
         long requests = usage.countByClientKeyIdAndCreatedAtAfter(key.getId(), from);

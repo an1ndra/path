@@ -25,8 +25,10 @@ class CreditGuardTest {
     private final ApiKeyService apiKeys = mock(ApiKeyService.class);
     private final UsageService usage = mock(UsageService.class);
     private final GatewayProperties props = new GatewayProperties();
+    private final com.anindra.path.repo.ProjectRepository projects =
+            mock(com.anindra.path.repo.ProjectRepository.class);
     private final CreditGuard guard = new CreditGuard(apiKeys, usage, props,
-            new com.anindra.path.admin.AlertService(props, new ObjectMapper()));
+            new com.anindra.path.admin.AlertService(props, new ObjectMapper()), projects);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private ClientKey key(BigDecimal daily, BigDecimal monthly, Integer maxOutput) {

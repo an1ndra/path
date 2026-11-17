@@ -142,6 +142,24 @@ class AnthropicAdapterTest {
     }
 
     @Test
+    void preservesCacheControlOnContentBlocks() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","max_tokens":50,
+                 "messages":[{"role":"user","content":[
+                    {"type":"text","text":"long stable prefix","cache_control":{"type":"ephemeral"}},
+                    {"type":"text","text":"question"}]}]}
+                """);
+
+        JsonNode body = mapper.readTree(
+                adapter.build(spec, route, provider, "k", false).body());
+        JsonNode firstBlock = body.path("messages").get(0).path("content").get(0);
+
+        assertThat(firstBlock.path("type").asText()).isEqualTo("text");
+        assertThat(firstBlock.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+        assertThat(body.path("messages").get(0).path("content").get(1).has("cache_control")).isFalse();
+    }
+
+    @Test
     void translatesAResponseWithToolUse() throws Exception {
         ChatRequestSpec spec = spec("""
                 {"model":"claude-3.5-haiku","messages":[{"role":"user","content":"hi"}]}

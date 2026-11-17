@@ -430,6 +430,23 @@ def main():
               any(k.get("name") == "project-key" for k in scoped_keys),
               str(len(scoped_keys)))
 
+        _, _, summary = jreq("GET", f"/admin/projects/{project['id']}/usage", admin=True)
+        check("project usage rollup is available",
+              "spend_today_usd" in summary and "key_count" in summary, str(summary)[:120])
+
+        # A project-wide daily budget rejects the next call from any of its keys.
+        jreq("PATCH", f"/admin/projects/{project['id']}",
+             {"daily_limit_usd": 0.000001}, admin=True)
+        p1, _, _ = jreq("POST", "/v1/chat/completions",
+                        {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
+                        key=scoped_key.get("key"))
+        p2, _, p2body = jreq("POST", "/v1/chat/completions",
+                             {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
+                             key=scoped_key.get("key"))
+        check("project daily budget blocks its keys",
+              p1 == 200 and p2 == 402 and "Project daily" in p2body.get("error", {}).get("message", ""),
+              f"{p1}/{p2} {str(p2body)[:100]}")
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

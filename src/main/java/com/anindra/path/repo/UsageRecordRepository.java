@@ -21,6 +21,11 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     long countByClientKeyIdAndCreatedAtAfter(Long clientKeyId, Instant from);
 
+    @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.clientKeyId in (select k.id from ClientKey k where k.projectId = :projectId) "
+            + "and u.createdAt >= :from")
+    BigDecimal sumCostForProjectSince(Long projectId, Instant from);
+
     @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u where u.createdAt >= :from")
     BigDecimal sumCostSince(Instant from);
 

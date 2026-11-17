@@ -28,6 +28,7 @@ public class CreditGuard {
     private final UsageService usage;
     private final GatewayProperties props;
     private final com.anindra.path.admin.AlertService alerts;
+    private final com.anindra.path.repo.ProjectRepository projects;
 
     /** @return the amount reserved for this call; release it when the call ends. */
     public BigDecimal check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
@@ -47,6 +48,24 @@ public class CreditGuard {
 
         enforceWindow("Daily", key.getDailyLimitUsd(), usage.spendFor(key.getId(), dayStart), dayStart, now);
         enforceWindow("Monthly", key.getMonthlyLimitUsd(), usage.spendFor(key.getId(), monthStart), monthStart, now);
+
+        if (key.getProjectId() != null) {
+            projects.findById(key.getProjectId()).ifPresent(project -> {
+                enforceWindow("Project daily", project.getDailyLimitUsd(),
+                        usage.spendForProject(project.getId(), dayStart), dayStart, now);
+                enforceWindow("Project monthly", project.getMonthlyLimitUsd(),
+                        usage.spendForProject(project.getId(), monthStart), monthStart, now);
+                if (project.getCreditLimitUsd() != null && project.getCreditLimitUsd().signum() > 0) {
+                    BigDecimal projectSpend = usage.spendForProject(project.getId(),
+                            Instant.EPOCH);
+                    if (projectSpend.compareTo(project.getCreditLimitUsd()) >= 0) {
+                        throw ApiException.insufficientCredits(
+                                "Project '" + project.getSlug() + "' has exhausted its credit limit of "
+                                        + project.getCreditLimitUsd().toPlainString() + " USD.");
+                    }
+                }
+            });
+        }
 
         BigDecimal remaining = apiKeys.remaining(key);
         if (remaining == null) {

@@ -41,24 +41,40 @@
   total can differ from the exact product by at most 1e-8 USD.
 - **Streaming has no resume.** Once bytes are sent the route cannot change; failures
   arrive as an SSE error object followed by `data: [DONE]`.
+- **Prompt logging covers streaming too.** The SSE payload is captured and stored the
+  same way as a non-streaming body, capped and redacted.
+- **Anthropic prompt caching is honoured.** A `cache_control` marker on a text or image
+  part is forwarded unchanged, so clients can cache long prefixes.
+- **Projects have their own budgets.** A project can carry a lifetime, daily and monthly
+  limit; they are checked against the spend of every key in it, and
+  `GET /admin/projects/{id}/usage` rolls up today, this month and all time.
 - **Prompt logging is off by default.** When enabled it redacts `sk-`/`gsk_`/`Bearer`
   tokens, caps each body, and purges after the retention window — but it still stores user
   prompts. Treat retention as a compliance decision.
 
 ## Known gaps
 
-- **Circuit state is in-memory, one node.** The breaker and concurrency limiter are
-  per-JVM; the RPM limiter and budget reservations are shared (Valkey and the database
-  respectively).
-- **Projects group keys, not billing.** A project is a tag on keys; there is no per-project
-  budget or invoice rollup yet.
-- **Embeddings are OpenAI-compatible only.** An Anthropic route returns 501
-  `unsupported_endpoint`.
-- **Images and audio are not proxied** beyond image blocks inside chat messages.
-- **Anthropic-specific betas are not forwarded** — prompt caching, extended thinking and
-  server-side tools pass through only as ordinary content blocks.
-- **Model sync** filters out non-chat ids and prices only the ids in
-  `ModelSyncService.PRICES`; everything else lands at 0.00 until edited.
-- **Prompt logs cover non-streaming chat only.**
+**Per-node by design**
+
+- **Circuit state and the in-flight limiter live in the JVM.** Breaking load across
+  instances makes each breaker see only its own failures, and the concurrency cap is per
+  instance. The RPM limiter and budget reservations *are* shared (Valkey and the
+  database), so money and rate limits stay correct in a cluster.
 - **Fuzzing is time-boxed.** `ChatRequestFuzzTest` runs Jazzer for 10s per build; deeper
   fuzzing is a manual `jazzer` run rather than a long CI job.
+
+**Provider-inherent**
+
+- **Embeddings are OpenAI-compatible only.** Anthropic publishes no embeddings endpoint,
+  so such a route returns 501 `unsupported_endpoint`.
+- **Audio is not proxied.** Chat images are supported (base64 and URL); audio inputs
+  would need a per-provider upload flow.
+- **Anthropic beta features beyond prompt caching are not forwarded** — extended
+  thinking and server-side tools pass through only as ordinary content blocks.
+
+**Operational**
+
+- **Model sync pricing uses a built-in table.** Ids in `ModelSyncService.PRICES` get a
+  price; anything else lands at 0.00 until edited, so a synced model can look free.
+- **Prompt logs are per-instance settings.** They apply to the whole gateway, not to a
+  single key.

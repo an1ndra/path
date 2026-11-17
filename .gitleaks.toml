@@ -1,0 +1,33 @@
+# gitleaks configuration
+#
+# Test fixtures, documentation examples and generated files intentionally contain
+# placeholder credentials (`sk-gw-...`, `mock-secret`, `sk-ant-...`). Real credentials
+# are never committed; anything that looks real should still fail the scan.
+
+title = "Path"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders in tests, docs and example configuration"
+paths = [
+  '''src/test/.*''',
+  '''docs/.*''',
+  '''tools/.*''',
+  '''README\.md''',
+  '''AGENTS\.md''',
+  '''\.env\.example''',
+  '''src/main/resources/application\.yml''',
+]
+
+regexes = [
+  '''sk-gw\.\.\.''',
+  '''sk-gw-does-not-exist''',
+  '''sk-gw-[A-Za-z0-9]{0,4}$''',
+  '''mock-secret''',
+  '''test-admin''',
+  '''sk-ant-\.\.\.''',
+  '''gsk_\.\.\.''',
+  '''sk-\.\.\.''',
+]

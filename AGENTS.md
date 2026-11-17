@@ -223,6 +223,13 @@ a smoke check. Never claim a fix without running both.
 - **`tools/smoke_test.py` needs a clean DB** for the demo-key path; otherwise it creates
   its own key through the admin API.
 
+## Security gates
+
+`main` requires the CI, CodeQL and Security checks. `.gitleaks.toml` allowlists the
+placeholder credentials in tests and docs — do not broaden it to hide a real key.
+Release artifacts carry `checksums.txt` and the wrapper pins the Maven distribution
+SHA-256.
+
 ## Secrets
 
 Never commit `.env`, `data/`, `*.mvdb`, master keys, or provider credentials. Stored

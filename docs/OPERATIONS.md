@@ -72,6 +72,23 @@ curl -s 'localhost:8080/admin/audit?action=route.update&limit=50' -H "$A"
 curl -s 'localhost:8080/admin/prompt-logs?limit=20' -H "$A"
 ```
 
+## Security gates
+
+`main` only accepts a PR that passes all of these:
+
+| Check | Workflow | Fails on |
+|---|---|---|
+| `Build and unit tests` | CI | compile or test failure |
+| `End-to-end smoke test` | CI | any of the 104 checks |
+| `Analyze Java` | CodeQL | new code-scanning alerts |
+| `Secret scan` | Security | a secret in the git history |
+| `Dependency review` | Security | a new dependency at high severity |
+| `Config and file scan` | Security | secrets or misconfiguration in the tree |
+
+A release tag additionally builds the image, scans it with Trivy (fails on
+HIGH/CRITICAL), and publishes the jar, a CycloneDX SBOM and `checksums.txt`. The image
+digest is written to the workflow summary so it can be pinned.
+
 ## Observability
 
 - **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,

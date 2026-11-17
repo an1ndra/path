@@ -86,6 +86,10 @@ jobs:
           image-ref: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           # CRITICAL blocks the release; HIGH is visible in the scan output but the
           # Debian base image rotates packages too often to gate on it.
+          #
+          # The ignore file is passed explicitly: its YAML form (which supports an
+          # expiry date, so an exception cannot rot) is not auto-detected.
+          ignorefile: .trivyignore.yaml
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true

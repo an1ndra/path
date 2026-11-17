@@ -19,6 +19,8 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     long countByCreatedAtAfter(Instant from);
 
+    long deleteByCreatedAtBefore(Instant cutoff);
+
     long countByClientKeyIdAndCreatedAtAfter(Long clientKeyId, Instant from);
 
     @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "

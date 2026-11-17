@@ -69,6 +69,18 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void stalePendingClaimsAreReclaimed() {
+        assertThat(service.begin(50L, "idem-stale", "hash-a")).isEmpty();
+
+        var record = records.findAll().get(0);
+        record.setCreatedAt(java.time.Instant.now().minus(java.time.Duration.ofMinutes(10)));
+        records.save(record);
+
+        // The instance that claimed this key died; a retry must not be blocked for 24h.
+        assertThat(service.begin(50L, "idem-stale", "hash-a")).isEmpty();
+    }
+
+    @Test
     void keysAreScopedToTheClientKey() {
         service.begin(46L, "shared-key", "hash-a");
         service.complete(46L, "shared-key", 200, "application/json", "{\"tenant\":1}");

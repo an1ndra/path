@@ -50,6 +50,9 @@ public class GatewayProperties {
     /** How long to wait for in-flight streams during shutdown. */
     private Duration drainTimeout = Duration.ofSeconds(30);
 
+    /** Usage rows older than this are deleted; zero keeps them forever. */
+    private Duration usageRetention = Duration.ofDays(180);
+
     /** Null means unlimited unless set. */
     private BigDecimal defaultCreditLimitUsd;
 
@@ -109,6 +112,8 @@ public class GatewayProperties {
     @Setter
     public static class Idempotency {
         private Duration ttl = Duration.ofHours(24);
+        /** A PENDING claim older than this is treated as abandoned and reused. */
+        private Duration pendingTimeout = Duration.ofMinutes(2);
         /** Responses larger than this are not stored for replay. */
         private int maxResponseBytes = 2_097_152;
     }

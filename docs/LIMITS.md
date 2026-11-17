@@ -41,6 +41,14 @@
   total can differ from the exact product by at most 1e-8 USD.
 - **Streaming has no resume.** Once bytes are sent the route cannot change; failures
   arrive as an SSE error object followed by `data: [DONE]`.
+- **Usage history is pruned.** Rows older than `GATEWAY_USAGE_RETENTION` (default 180
+  days) are deleted nightly; set it to `0` to keep history forever and plan for
+  partitioning at that point.
+- **Abandoned idempotency claims are reclaimed.** A PENDING claim older than
+  `GATEWAY_IDEMPOTENCY_PENDING` (default 2 min) is treated as crashed and the retry runs,
+  so one dead instance cannot block a key for the full TTL.
+- **Traces continue upstream.** The W3C `traceparent` header is injected into every
+  provider call, so provider-side logs join the same trace.
 - **Prompt logging covers streaming too.** The SSE payload is captured and stored the
   same way as a non-streaming body, capped and redacted.
 - **Anthropic prompt caching is honoured.** A `cache_control` marker on a text or image
@@ -74,6 +82,8 @@
 
 **Operational**
 
+- **Idempotency applies to chat only.** `/v1/embeddings` honours drain, concurrency and
+  budgets, but not `Idempotency-Key` or the response cache.
 - **Model sync pricing uses a built-in table.** Ids in `ModelSyncService.PRICES` get a
   price; anything else lands at 0.00 until edited, so a synced model can look free.
 - **Prompt logs are per-instance settings.** They apply to the whole gateway, not to a

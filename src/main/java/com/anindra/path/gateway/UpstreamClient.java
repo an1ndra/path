@@ -30,9 +30,11 @@ public class UpstreamClient {
 
     private final HttpClient http;
     private final GatewayProperties props;
+    private final io.micrometer.tracing.Tracer tracer;
 
-    public UpstreamClient(GatewayProperties props) {
+    public UpstreamClient(GatewayProperties props, io.micrometer.tracing.Tracer tracer) {
         this.props = props;
+        this.tracer = tracer;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(props.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -43,6 +45,7 @@ public class UpstreamClient {
     public Response get(String url, Map<String, String> headers) throws IOException, InterruptedException {
         HttpRequest.Builder b = base(url, Duration.ofSeconds(30)).GET();
         headers.forEach(b::header);
+        addTraceparent(b);
         HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Response(resp.statusCode(), resp.body(), flatten(resp));
     }
@@ -58,6 +61,7 @@ public class UpstreamClient {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         headers.forEach(b::header);
+        addTraceparent(b);
         HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Response(resp.statusCode(), resp.body(), flatten(resp));
     }
@@ -70,6 +74,7 @@ public class UpstreamClient {
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         headers.forEach(b::header);
+        addTraceparent(b);
 
         HttpResponse<InputStream> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
         if (resp.statusCode() >= 400) {
@@ -90,6 +95,16 @@ public class UpstreamClient {
             }
         });
         return headers;
+    }
+
+    /** W3C trace context, so provider-side logs join the same trace. */
+    private void addTraceparent(HttpRequest.Builder builder) {
+        io.micrometer.tracing.Span span = tracer.currentSpan();
+        if (span != null) {
+            var context = span.context();
+            builder.header("traceparent",
+                    "00-" + context.traceId() + "-" + context.spanId() + "-01");
+        }
     }
 
     private HttpRequest.Builder base(String url, Duration timeout) {

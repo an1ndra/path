@@ -23,6 +23,7 @@ except the provider credentials you actually use.
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests per key (0 = unlimited) |
 | `GATEWAY_MAX_OUTPUT_TOKENS` | `0` (off) | hard cap on `max_tokens` for every request |
+| `GATEWAY_USAGE_RETENTION` | `180d` | usage rows older than this are deleted nightly (0 keeps them) |
 
 ## Upstream behaviour
 
@@ -33,6 +34,7 @@ except the provider credentials you actually use.
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
 | `GATEWAY_IDEMPOTENCY_TTL` | `24h` | how long a completed response stays replayable |
 | `GATEWAY_IDEMPOTENCY_MAX_BYTES` | `2097152` | larger responses are not stored for replay |
+| `GATEWAY_IDEMPOTENCY_PENDING` | `2m` | abandoned PENDING claims are reclaimed after this |
 | `GATEWAY_CACHE_MAX_BYTES` | `2097152` | larger responses are not cached |
 
 Timeouts live in `application.yml` under `gateway.*`: `connect-timeout` (10s),

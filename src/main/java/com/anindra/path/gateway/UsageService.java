@@ -6,6 +6,7 @@ import com.anindra.path.domain.UsageRecord;
 import com.anindra.path.repo.UsageRecordRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UsageService {
 
     private static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000L);
@@ -30,6 +32,7 @@ public class UsageService {
     private final UsageRecordRepository usage;
     private final ApiKeyService apiKeys;
     private final MeterRegistry metrics;
+    private final com.anindra.path.config.GatewayProperties props;
 
     /** Itemised cost of one call. */
     public record CostBreakdown(BigDecimal inputUsd, BigDecimal cachedInputUsd, BigDecimal cacheWriteUsd,
@@ -210,6 +213,20 @@ public class UsageService {
         return BigDecimal.valueOf(usage.completion())
                 .multiply(BigDecimal.valueOf(1000))
                 .divide(BigDecimal.valueOf(window), 2, RoundingMode.HALF_UP);
+    }
+
+    /** Deletes usage older than the retention window; zero keeps history forever. */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 30 3 * * *")
+    @Transactional
+    void purgeOldUsage() {
+        java.time.Duration retention = props.getUsageRetention();
+        if (retention == null || retention.isZero() || retention.isNegative()) {
+            return;
+        }
+        long removed = usage.deleteByCreatedAtBefore(Instant.now().minus(retention));
+        if (removed > 0) {
+            log.info("Purged {} usage rows older than {}", removed, retention);
+        }
     }
 
     /** Spend since a timestamp, used by the daily/monthly windows. */

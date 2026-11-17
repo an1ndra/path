@@ -43,14 +43,23 @@ public class IdempotencyService {
         if (existing.isPresent()) {
             IdempotencyRecord record = existing.get();
             if (record.getStatus() == IdempotencyRecord.Status.PENDING) {
-                throw new ApiException(409, "invalid_request_error", "idempotency_in_progress",
-                        "A request with this Idempotency-Key is still in progress.");
+                java.time.Duration staleAfter = props.getIdempotency().getPendingTimeout();
+                boolean abandoned = record.getCreatedAt().isBefore(Instant.now().minus(staleAfter));
+                if (!abandoned) {
+                    throw new ApiException(409, "invalid_request_error", "idempotency_in_progress",
+                            "A request with this Idempotency-Key is still in progress.");
+                }
+                // The instance that claimed this key died mid-request; let the retry run.
+                log.warn("Reclaiming stale PENDING idempotency claim {}", record.getId());
+                records.delete(record);
+                records.flush();
+            } else {
+                if (!record.getRequestHash().equals(requestHash)) {
+                    throw new ApiException(409, "invalid_request_error", "idempotency_conflict",
+                            "This Idempotency-Key was already used with a different request body.");
+                }
+                return Optional.of(new Replay(record.getHttpStatus(), record.getContentType(), record.getBody()));
             }
-            if (!record.getRequestHash().equals(requestHash)) {
-                throw new ApiException(409, "invalid_request_error", "idempotency_conflict",
-                        "This Idempotency-Key was already used with a different request body.");
-            }
-            return Optional.of(new Replay(record.getHttpStatus(), record.getContentType(), record.getBody()));
         }
 
         IdempotencyRecord claim = new IdempotencyRecord();

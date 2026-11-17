@@ -214,12 +214,26 @@ public class ChatCompletionsController {
             throw ApiException.unauthorized(
                     "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
         }
-        var result = embeddings.embed(body, key);
-        return ResponseEntity.ok()
-                .header("X-Gateway-Provider", result.providerSlug())
-                .header("X-Gateway-Upstream-Model", result.upstreamModel())
-                .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
-                .body(result.body());
+        drain.begin();
+        try {
+            int limit = key.getMaxConcurrentRequests() != null
+                    ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
+            if (!concurrency.tryAcquire(key.getId(), limit)) {
+                throw ApiException.tooManyConcurrent(limit);
+            }
+            try {
+                var result = embeddings.embed(body, key);
+                return ResponseEntity.ok()
+                        .header("X-Gateway-Provider", result.providerSlug())
+                        .header("X-Gateway-Upstream-Model", result.upstreamModel())
+                        .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
+                        .body(result.body());
+            } finally {
+                concurrency.release(key.getId());
+            }
+        } finally {
+            drain.end();
+        }
     }
 
     @Operation(summary = "List the model catalogue")

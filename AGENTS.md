@@ -163,6 +163,29 @@ a smoke check. Never claim a fix without running both.
   publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is
   missing or empty (`tools/changelog.py`).
 
+## Issue labels
+
+Every open story carries exactly one `area/` label and one `effort/` label, so the
+queue is filterable by `label:area/routing` or by size.
+
+| Label | Meaning |
+|---|---|
+| `area/routing` | model selection, fallback chains, aliases |
+| `area/billing` | credits, budgets, idempotent charging |
+| `area/metering` | usage records, reporting, token counting |
+| `area/providers` | wire formats, adapters, provider support |
+| `area/security` | PII, guardrails, auth, secrets |
+| `area/ops` | deployment, scaling, cluster behaviour |
+| `area/api` | public and admin API surface |
+| `effort/s` | roughly a day or less |
+| `effort/m` | roughly two to five days |
+| `effort/l` | a week or more, or needs a design decision |
+| `blocked` | waiting on something outside this repository |
+
+A story may carry two `area/` labels when it genuinely spans two (for example a
+billing change that also adds an endpoint). Never three, and never none. `effort/*`
+is a guess, not a commitment — re-tag when reality disagrees.
+
 ## Gotchas
 
 - **Flyway owns the schema; `ddl-auto` is `validate`.** Add `V<n>__name.sql` for every

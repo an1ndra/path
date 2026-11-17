@@ -46,8 +46,8 @@ class GatewayApiTest {
     }
 
     @Test
-    void catalogueIsPublicAndSeeded() throws Exception {
-        mvc.perform(get("/v1/models"))
+    void catalogueIsSeededAndServedToAnAuthenticatedCaller() throws Exception {
+        mvc.perform(get("/v1/models").header("Authorization", "Bearer " + key))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.object").value("list"))
                 .andExpect(jsonPath("$.data[?(@.id == 'gpt-4o-mini')]").exists())
@@ -55,7 +55,32 @@ class GatewayApiTest {
     }
 
     @Test
-    void modelsRequireNoKeyButChatDoes() throws Exception {
+    void catalogueRequiresAKeyByDefault() throws Exception {
+        // The catalogue names every model and alias, so it is gated by default; a deployment
+        // that wants it keyless sets gateway.public-models=true.
+        mvc.perform(get("/v1/models"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("missing_api_key"));
+    }
+
+    @Test
+    void onlyLivenessIsPublicOnActuator() throws Exception {
+        mvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/actuator/metrics"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/actuator/health/providers"))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(get("/actuator/metrics").header("X-Admin-Token", "test-admin"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void chatRequiresAKey() throws Exception {
         mvc.perform(post("/v1/chat/completions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -123,7 +148,7 @@ class GatewayApiTest {
 
     @Test
     void everyResponseCarriesARequestId() throws Exception {
-        mvc.perform(get("/v1/models"))
+        mvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
                         .header().exists("X-Request-Id"));

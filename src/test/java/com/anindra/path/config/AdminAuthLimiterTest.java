@@ -37,4 +37,35 @@ class AdminAuthLimiterTest {
         limiter.onSuccess("10.0.0.3");
         assertThat(limiter.retryAfterSeconds("10.0.0.3")).isZero();
     }
+
+    @Test
+    void aRotatingAddressDoesNotLiftTheCap() {
+        // The bypass: Cloudflare edge addresses change per request, and a forged
+        // X-Forwarded-For changes per request by construction. Counting per address alone
+        // let thousands of guesses through, so the process-wide window has to close first.
+        GatewayProperties props = new GatewayProperties();
+        props.getAdminAuth().setMaxFailures(2);
+        props.getAdminAuth().setGlobalMaxFailures(5);
+        props.getAdminAuth().setWindow(Duration.ofMinutes(5));
+        AdminAuthLimiter limiter = new AdminAuthLimiter(props);
+
+        for (int i = 0; i < 5; i++) {
+            limiter.onFailure("203.0.113." + i);
+        }
+
+        assertThat(limiter.retryAfterSeconds("203.0.113.99")).isGreaterThan(0);
+        assertThat(limiter.retryAfterSeconds("198.51.100.7")).isGreaterThan(0);
+    }
+
+    @Test
+    void aLegitimateAdminIsNotLockedOutByOtherAddresses() {
+        GatewayProperties props = new GatewayProperties();
+        props.getAdminAuth().setMaxFailures(2);
+        props.getAdminAuth().setGlobalMaxFailures(5);
+        props.getAdminAuth().setWindow(Duration.ofMinutes(5));
+        AdminAuthLimiter limiter = new AdminAuthLimiter(props);
+
+        limiter.onFailure("203.0.113.1");
+        assertThat(limiter.retryAfterSeconds("198.51.100.7")).isZero();
+    }
 }

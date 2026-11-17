@@ -22,6 +22,14 @@ public class GatewayProperties {
     /** When true, GET /v1/models works without an API key. */
     private boolean publicModels = true;
 
+    /**
+     * Header carrying the real client address, e.g. "CF-Connecting-IP" behind Cloudflare.
+     * Empty means use the socket address and ignore forwarding headers entirely: honouring
+     * a client-supplied X-Forwarded-For lets an attacker rotate the value and defeat every
+     * per-address limit, including the admin auth limiter.
+     */
+    private String clientIpHeader = "";
+
     /** Comma separated origin patterns, or * for any. */
     private String corsOrigins = "*";
 
@@ -100,6 +108,12 @@ public class GatewayProperties {
         /** Failed admin auth attempts allowed per window before 429s start. */
         private int maxFailures = 10;
         private Duration window = Duration.ofMinutes(5);
+        /**
+         * Failures across ALL addresses in the window. The per-address cap alone is worth
+         * nothing against a rotating source (Cloudflare edge addresses, spoofed forwarding
+         * headers), which is exactly how the admin limiter was bypassed.
+         */
+        private int globalMaxFailures = 200;
     }
 
     @Getter

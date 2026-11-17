@@ -9,7 +9,8 @@ except the provider credentials you actually use.
 |---|---|---|
 | `PORT` | `8080` | HTTP port |
 | `GATEWAY_ADMIN_TOKEN` | empty (admin off) | admin shared secret |
-| `GATEWAY_PUBLIC_MODELS` | `true` | allow keyless `/v1/models` |
+| `GATEWAY_PUBLIC_MODELS` | `false` | allow keyless `/v1/models` (it names every model and alias) |
+| `GATEWAY_CLIENT_IP_HEADER` | empty | header holding the real client address, e.g. `CF-Connecting-IP`; empty ignores `X-Forwarded-For` |
 | `GATEWAY_CORS_ORIGINS` | `*` | comma-separated origin patterns |
 | `GATEWAY_MAX_REQUEST_BYTES` | `1048576` | request bodies larger than this get 413 |
 | `GATEWAY_DRAIN_TIMEOUT` | `30s` | how long shutdown waits for in-flight streams |
@@ -60,7 +61,8 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_GUARDRAILS_REDACT` | `false` | redact the prompt the provider receives |
 | `GATEWAY_GUARDRAILS_MODERATION` | `false` | pre-flight moderation call (OpenAI-shaped providers) |
 | `GATEWAY_GUARDRAILS_MODERATION_MODEL` | `omni-moderation-latest` | model used for that call |
-| `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts before 429s |
+| `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts per address before 429s |
+| `GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES` | `200` | failures across all addresses in the window; stops a rotating source |
 | `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
 | `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |
 | `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |

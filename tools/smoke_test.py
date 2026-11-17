@@ -361,7 +361,7 @@ def main():
         "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
     check("the alias serves traffic", status == 200 and body.get("choices"), str(status))
 
-    _, _, catalogue = jreq("GET", "/v1/models")
+    _, _, catalogue = jreq("GET", "/v1/models", key=key)
     ids = [m["id"] for m in catalogue["data"]]
     check("the alias appears in the catalogue", "smoke-alias" in ids, str(ids)[:120])
 

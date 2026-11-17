@@ -43,7 +43,11 @@ gateway:
   # Empty means the admin API is disabled (403). Set GATEWAY_ADMIN_TOKEN to enable it.
   admin-token: ${GATEWAY_ADMIN_TOKEN:}
   # Allow GET /v1/models without an API key.
-  public-models: ${GATEWAY_PUBLIC_MODELS:true}
+  public-models: ${GATEWAY_PUBLIC_MODELS:false}
+  # Header that carries the real client address when a trusted edge sits in front
+  # (e.g. CF-Connecting-IP behind Cloudflare). Empty = use the socket address and ignore
+  # X-Forwarded-For, which a client can forge to dodge per-address limits.
+  client-ip-header: ${GATEWAY_CLIENT_IP_HEADER:}
   cors-origins: ${GATEWAY_CORS_ORIGINS:*}
   connect-timeout: 10s
   request-timeout: 180s
@@ -78,6 +82,7 @@ gateway:
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
+    global-max-failures: ${GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES:200}
   guardrails:
     prompt-log-redaction: ${GATEWAY_GUARDRAILS_LOG_REDACTION:true}
     redact-before-send: ${GATEWAY_GUARDRAILS_REDACT:false}

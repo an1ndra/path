@@ -25,7 +25,7 @@ import java.security.MessageDigest;
  * Single entry gate:
  *   /v1/**    -> client API key (except GET /v1/models when public-models=true)
  *   /admin/** -> X-Admin-Token
- *   /actuator/** -> open
+ *   /actuator/health -> open (status only); every other actuator endpoint needs the admin token
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -48,7 +48,7 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !path.startsWith("/v1") && !path.startsWith("/admin");
+        return !path.startsWith("/v1") && !path.startsWith("/admin") && !path.startsWith("/actuator");
     }
 
     @Override
@@ -65,6 +65,8 @@ public class AuthFilter extends OncePerRequestFilter {
         try {
             if (path.startsWith("/admin")) {
                 requireAdmin(request);
+            } else if (path.startsWith("/actuator")) {
+                requireActuatorAccess(request, path);
             } else if (!isPublicModelsRequest(request)) {
                 ClientKey key = resolveClientKey(request);
                 int retryAfter = rateLimiter.acquire(key.getId(), key.getRpmLimit());
@@ -139,6 +141,19 @@ public class AuthFilter extends OncePerRequestFilter {
                     || request.getRequestURI().startsWith("/v1/models/"));
     }
 
+    /**
+     * Only the liveness probe is public, and it reports status alone. /actuator/health/providers,
+     * /actuator/metrics and /actuator/prometheus expose the framework version, datasource
+     * internals, repository names and provider topology, so they are gated like /admin.
+     */
+    private void requireActuatorAccess(HttpServletRequest request, String path) {
+        boolean liveness = "GET".equalsIgnoreCase(request.getMethod())
+                && "/actuator/health".equals(path);
+        if (!liveness) {
+            requireAdmin(request);
+        }
+    }
+
     private ClientKey resolveClientKey(HttpServletRequest request) {
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         String token = null;
@@ -196,10 +211,20 @@ public class AuthFilter extends OncePerRequestFilter {
         }
     }
 
-    private static String clientAddress(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+    /**
+     * The address the limiter counts against.
+     *
+     * Deliberately does NOT read X-Forwarded-For: a client can prepend any value, and the
+     * first hop was being trusted, so rotating it reset the counter on every request. When
+     * a trusted edge is in front (Cloudflare), configure client-ip-header and it is used.
+     */
+    private String clientAddress(HttpServletRequest request) {
+        String header = props.getClientIpHeader();
+        if (header != null && !header.isBlank()) {
+            String value = request.getHeader(header.trim());
+            if (value != null && !value.isBlank()) {
+                return value.split(",")[0].trim();
+            }
         }
         return request.getRemoteAddr();
     }

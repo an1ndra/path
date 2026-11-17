@@ -46,6 +46,8 @@ gateway:
   bootstrap-demo-key: ${GATEWAY_BOOTSTRAP_DEMO_KEY:true}
   default-rpm-limit: ${GATEWAY_DEFAULT_RPM:120}
   default-credit-limit-usd: ${GATEWAY_DEFAULT_CREDIT_USD:}
+  default-max-concurrent: ${GATEWAY_DEFAULT_MAX_CONCURRENT:8}
+  max-request-bytes: ${GATEWAY_MAX_REQUEST_BYTES:1048576}
   breaker:
     failure-threshold: ${GATEWAY_BREAKER_FAILURES:5}
     open-duration: ${GATEWAY_BREAKER_OPEN:30s}

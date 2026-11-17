@@ -38,6 +38,12 @@ public class GatewayProperties {
 
     private int defaultRpmLimit = 120;
 
+    /** Concurrent in-flight requests allowed per key unless the key overrides it. */
+    private int defaultMaxConcurrentRequests = 8;
+
+    /** Request bodies larger than this are rejected with 413. */
+    private long maxRequestBytes = 1_048_576;
+
     /** Null means unlimited unless set. */
     private BigDecimal defaultCreditLimitUsd;
 

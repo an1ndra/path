@@ -3,6 +3,9 @@ package com.anindra.path.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.anindra.path.api.ApiException;
+import com.knuddels.jtokkit.Encodings;
+import com.knuddels.jtokkit.api.Encoding;
+import com.knuddels.jtokkit.api.EncodingRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +16,8 @@ import java.util.Set;
  * The original body is kept so OpenAI-shaped providers can be forwarded verbatim.
  */
 public final class ChatRequestSpec {
+
+    private static final EncodingRegistry TOKENIZERS = Encodings.newLazyEncodingRegistry();
 
     private static final Set<String> ROLES =
             Set.of("system", "developer", "user", "assistant", "tool", "function");
@@ -175,23 +180,50 @@ public final class ChatRequestSpec {
         return sb.toString();
     }
 
-    /** Rough prompt size used only to pre-authorise spend. */
+    /**
+     * Prompt size used to pre-authorise spend. Counts real tokens when the upstream model
+     * has a known encoding, otherwise falls back to the chars/4 heuristic.
+     */
+    public int estimatePromptTokens(String model) {
+        String text = promptText();
+        if (model != null && !model.isBlank()) {
+            try {
+                Encoding encoding = TOKENIZERS.getEncodingForModel(model).orElse(null);
+                if (encoding != null) {
+                    return Math.max(1, encoding.countTokens(text));
+                }
+            } catch (Exception ignored) {
+                // unknown model or unsupported encoding: fall through to the heuristic
+            }
+        }
+        return Math.max(1, text.length() / 4);
+    }
+
     public int estimatePromptTokens() {
-        int chars = 0;
+        return estimatePromptTokens(null);
+    }
+
+    private String promptText() {
+        StringBuilder sb = new StringBuilder();
         for (JsonNode message : messages()) {
+            JsonNode role = message.get("role");
+            if (role != null) {
+                sb.append(role.asText()).append(' ');
+            }
             JsonNode content = message.get("content");
             if (content != null) {
-                chars += textOf(content).length();
+                sb.append(textOf(content));
             }
             JsonNode toolCalls = message.get("tool_calls");
             if (toolCalls != null) {
-                chars += toolCalls.toString().length();
+                sb.append(toolCalls.toString());
             }
+            sb.append('\n');
         }
         JsonNode tools = body.get("tools");
         if (tools != null) {
-            chars += tools.toString().length();
+            sb.append(tools.toString());
         }
-        return Math.max(1, chars / 4);
+        return sb.toString();
     }
 }

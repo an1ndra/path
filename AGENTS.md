@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (28)
+# unit + integration tests (40)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (72 checks, no real keys)
+# full end-to-end suite against a mock upstream (74 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -47,6 +47,7 @@ com.anindra.path
 │   ├── StreamService             SSE path; owns commit semantics
 │   ├── ProviderCircuitBreaker    per-provider OPEN/HALF_OPEN/CLOSED, Retry-After
 │   ├── IdempotencyService        Idempotency-Key claims and replay
+│   ├── ConcurrencyLimiter        per-key in-flight permits
 │   ├── RouteResolver             public model id → ordered chain
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
@@ -105,7 +106,9 @@ com.anindra.path
 - `UsageCostTest` — cost breakdown, cache pricing, missing prices, usage parsing.
 - `ProviderCircuitBreakerTest` — threshold, half-open probe, rate-limit parking.
 - `IdempotencyServiceTest` — replay, conflicts, concurrent claims, key scoping.
-- `tools/smoke_test.py` — 72 checks against `tools/mock-upstream.py`. The mock can
+- `ConcurrencyLimiterTest` — per-key permits, no over-release.
+- `TokenEstimateTest` — real tokenization with a heuristic fallback.
+- `tools/smoke_test.py` — 74 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -133,9 +136,13 @@ a smoke check. Never claim a fix without running both.
 - **H2 rejects `AUTO_SERVER=TRUE` together with `DB_CLOSE_ON_EXIT`.** Don't re-add it.
 - **Admin credentials are resolved DB → config → env.** A key stored via the admin API
   silently wins over `OPENAI_API_KEY`.
-- **Anthropic silently drops parameters it has no equivalent for** (`n`, `response_format`,
-  `logit_bias`, penalties, `seed`). A client switching models gets different semantics
-  with a 200. Known gap; reject or implement rather than ignore.
+- **Anthropic rejects parameters it has no equivalent for** with 422
+  `unsupported_parameter` (`seed`, `logit_bias`, penalties, `logprobs`, `n > 1`,
+  non-text `response_format`). Do not "fix" a failing call by dropping the field; the
+  divergence is what the 422 exists to prevent. `user` maps to `metadata.user_id`.
+- **Token estimates use jtokkit** when the upstream model has a known encoding, and fall
+  back to `chars / 4`. The estimate only pre-authorises spend; billing always uses the
+  provider-reported usage.
 - **`usage_estimated=true`** means the provider returned no `usage` block and the counts
   were inferred from text length. Never present those as observed.
 - **The demo key is unlimited** and is created when the key table is empty. Set

@@ -232,7 +232,8 @@ Errors use the OpenAI envelope:
 Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 `model_not_found`, `insufficient_credits`, `rate_limit_exceeded`,
 `upstream_timeout`, `upstream_error`, `provider_auth_error`, `all_providers_failed`,
-`circuit_open`, `idempotency_conflict`, `idempotency_in_progress`.
+`circuit_open`, `idempotency_conflict`, `idempotency_in_progress`,
+`concurrency_limit_exceeded`, `payload_too_large`, `unsupported_parameter`.
 
 ## Configuration
 
@@ -247,6 +248,8 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_BOOTSTRAP_DEMO_KEY` | `true` | create a demo key when the table is empty |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
+| `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests allowed per key (0 = unlimited) |
+| `GATEWAY_MAX_REQUEST_BYTES` | `1048576` | request bodies larger than this get 413 |
 | `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
 | `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
@@ -297,6 +300,13 @@ python3 tools/smoke_test.py        # 49 checks
   `idempotency_in_progress`. Completed responses are kept for
   `GATEWAY_IDEMPOTENCY_TTL`. A response larger than
   `GATEWAY_IDEMPOTENCY_MAX_BYTES` is not stored, so a retry calls the provider again.
+- **Limits are enforced before the call.** A key may have at most
+  `max_concurrent_requests` in flight (default 8, per key), and bodies above
+  `max-request-bytes` are rejected with 413 before Jackson reads them.
+- **Unsupported parameters are rejected, not dropped.** Anthropic has no equivalent for
+  `seed`, `logit_bias`, penalties, `logprobs`, `n > 1` or a non-text `response_format`;
+  those calls return 422 `unsupported_parameter` instead of silently behaving
+  differently to the same call on OpenAI.
 - **Circuit breaker per provider.** Five consecutive failures park a provider for 30s
   (both configurable); routes on a parked provider are skipped in microseconds instead
   of costing a connect timeout. An upstream 429 with `Retry-After` parks the provider

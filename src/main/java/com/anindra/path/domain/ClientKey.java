@@ -46,6 +46,9 @@ public class ClientKey {
     @Column(nullable = false)
     private int rpmLimit = 120;
 
+    /** Null means use the gateway default. */
+    private Integer maxConcurrentRequests;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 

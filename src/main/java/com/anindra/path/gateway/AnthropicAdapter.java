@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.anindra.path.api.ApiException;
 import com.anindra.path.domain.ModelRoute;
 import com.anindra.path.domain.Provider;
 import com.anindra.path.domain.ProviderType;
@@ -31,6 +32,11 @@ public class AnthropicAdapter implements ProviderAdapter {
 
     private static final String ANTHROPIC_VERSION = "2023-06-01";
 
+    /** OpenAI parameters with no Anthropic equivalent; silently dropping them changes behaviour. */
+    private static final List<String> UNSUPPORTED = List.of(
+            "logit_bias", "frequency_penalty", "presence_penalty", "seed",
+            "logprobs", "top_logprobs", "modalities", "audio", "prediction");
+
     private final ObjectMapper mapper;
 
     @Override
@@ -44,6 +50,7 @@ public class AnthropicAdapter implements ProviderAdapter {
     public UpstreamRequest build(ChatRequestSpec spec, ModelRoute route, Provider provider,
                                  String apiKey, boolean stream) {
         ObjectNode body = spec.body();
+        validateParameters(body);
         ObjectNode out = mapper.createObjectNode();
 
         out.put("model", route.getUpstreamModelId());
@@ -56,6 +63,11 @@ public class AnthropicAdapter implements ProviderAdapter {
         String system = spec.systemText();
         if (!system.isBlank()) {
             out.put("system", system);
+        }
+
+        JsonNode user = body.get("user");
+        if (user != null && user.isTextual() && !user.asText().isBlank()) {
+            out.putObject("metadata").put("user_id", user.asText());
         }
 
         out.set("messages", convertMessages(body.get("messages")));
@@ -111,6 +123,27 @@ public class AnthropicAdapter implements ProviderAdapter {
         headers.put("anthropic-version", ANTHROPIC_VERSION);
         headers.put("Accept", stream ? "text/event-stream" : "application/json");
         return new UpstreamRequest(join(provider.getBaseUrl(), "/messages"), headers, out.toString());
+    }
+
+    private static void validateParameters(ObjectNode body) {
+        for (String parameter : UNSUPPORTED) {
+            if (body.hasNonNull(parameter)) {
+                throw unsupported(parameter);
+            }
+        }
+        if (body.hasNonNull("n") && body.get("n").asInt(1) != 1) {
+            throw unsupported("n");
+        }
+        JsonNode format = body.get("response_format");
+        if (format != null && !"text".equals(format.path("type").asText("text"))) {
+            throw unsupported("response_format");
+        }
+    }
+
+    private static ApiException unsupported(String parameter) {
+        return new ApiException(422, "invalid_request_error", "unsupported_parameter",
+                "Parameter '" + parameter + "' is not supported by the anthropic wire format.",
+                parameter);
     }
 
     private static String toolChoiceMode(JsonNode toolChoice) {

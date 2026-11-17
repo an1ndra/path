@@ -167,7 +167,8 @@ public class StreamService {
 
                 TokenUsage tokens = translator.usage();
                 if (!tokens.reported()) {
-                    tokens = TokenUsage.estimated(spec.estimatePromptTokens(),
+                    tokens = TokenUsage.estimated(
+                            spec.estimatePromptTokens(rr.route().getUpstreamModelId()),
                             Math.max(1, generatedChars / 4));
                 }
                 if (spec.includeUsage() && tokens.reported()) {

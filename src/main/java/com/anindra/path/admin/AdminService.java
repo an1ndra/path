@@ -56,7 +56,9 @@ public class AdminService {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record KeyInput(String name, @JsonAlias("creditLimitUsd") BigDecimal creditLimitUsd,
-                           @JsonAlias("rpmLimit") Integer rpmLimit, Boolean enabled) {
+                           @JsonAlias("rpmLimit") Integer rpmLimit,
+                           @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
+                           Boolean enabled) {
     }
 
     private final ProviderRepository providers;
@@ -308,6 +310,10 @@ public class AdminService {
     @Transactional
     public Map<String, Object> createKey(KeyInput in) {
         ApiKeyService.CreatedKey created = apiKeys.create(in.name(), in.creditLimitUsd(), in.rpmLimit());
+        if (in.maxConcurrentRequests() != null) {
+            created.key().setMaxConcurrentRequests(in.maxConcurrentRequests());
+            clientKeys.save(created.key());
+        }
         Map<String, Object> view = keyView(created.key());
         view.put("key", created.plaintext());
         view.put("warning", "Store this key now. It is not shown again.");
@@ -329,6 +335,12 @@ public class AdminService {
                 throw ApiException.badRequest("rpmLimit must be at least 1", "rpmLimit");
             }
             key.setRpmLimit(in.rpmLimit());
+        }
+        if (in.maxConcurrentRequests() != null) {
+            if (in.maxConcurrentRequests() < 0) {
+                throw ApiException.badRequest("maxConcurrentRequests cannot be negative", "maxConcurrentRequests");
+            }
+            key.setMaxConcurrentRequests(in.maxConcurrentRequests());
         }
         if (in.enabled() != null) {
             key.setEnabled(in.enabled());
@@ -369,6 +381,7 @@ public class AdminService {
         view.put("masked_key", k.getKeyPrefix() + "..." + k.getKeySuffix());
         view.put("enabled", k.isEnabled());
         view.put("rpm_limit", k.getRpmLimit());
+        view.put("max_concurrent_requests", k.getMaxConcurrentRequests());
         view.put("credit_limit_usd", k.getCreditLimitUsd());
         view.put("used_usd", k.getUsedUsd());
         view.put("created_at", k.getCreatedAt().toString());

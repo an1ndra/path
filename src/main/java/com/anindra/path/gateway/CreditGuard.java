@@ -31,7 +31,7 @@ public class CreditGuard {
                     "This API key has no credit left (" + key.getUsedUsd() + " of "
                             + key.getCreditLimitUsd() + " USD used). Top up the key to continue.");
         }
-        int promptEstimate = spec.estimatePromptTokens();
+        int promptEstimate = spec.estimatePromptTokens(route.route().getUpstreamModelId());
         int outputEstimate = spec.maxTokens() != null ? spec.maxTokens() : DEFAULT_MAX_OUTPUT;
         outputEstimate = Math.min(outputEstimate, ESTIMATE_CAP);
         BigDecimal worstCase = usage.cost(route.route(),

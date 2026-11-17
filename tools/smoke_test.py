@@ -240,6 +240,20 @@ def main():
     check("allow_fallbacks=false surfaces the 500", status == 502 and
           body.get("error", {}).get("code") == "upstream_error", str(status) + str(body)[:200])
 
+    # --------------------------------------------------------------- limits, params
+    status, _, body = jreq("POST", "/v1/chat/completions",
+                           {"model": "gpt-4o-mini",
+                            "messages": [{"role": "user", "content": "x" * 1_100_000}]}, key=key)
+    check("oversized body -> 413", status == 413 and body.get("error", {}).get("code") == "payload_too_large",
+          str(status))
+
+    status, _, body = jreq("POST", "/v1/chat/completions", {
+        "model": "claude-3.5-haiku", "seed": 7,
+        "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("anthropic rejects unsupported seed -> 422",
+          status == 422 and body.get("error", {}).get("code") == "unsupported_parameter",
+          str(status) + str(body)[:120])
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

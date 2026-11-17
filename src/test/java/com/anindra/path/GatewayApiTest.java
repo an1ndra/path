@@ -99,6 +99,18 @@ class GatewayApiTest {
     }
 
     @Test
+    void oversizedBodyIsRejectedBeforeParsing() throws Exception {
+        String big = "x".repeat(1_100_000);
+        mvc.perform(post("/v1/chat/completions")
+                        .header("Authorization", "Bearer " + key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\""
+                                + big + "\"}]}"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error.code").value("payload_too_large"));
+    }
+
+    @Test
     void adminRequiresToken() throws Exception {
         mvc.perform(get("/admin/providers"))
                 .andExpect(status().isUnauthorized());

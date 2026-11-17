@@ -44,6 +44,9 @@ Every failure uses the OpenAI envelope:
 | `upstream_error` | 502 | upstream 5xx or unmapped failure |
 | `all_providers_failed` | 502 | every route in the chain failed |
 | `circuit_open` | 503 | provider parked by the circuit breaker |
+| `concurrency_limit_exceeded` | 429 | too many in-flight requests for this key |
+| `payload_too_large` | 413 | request body above `GATEWAY_MAX_REQUEST_BYTES` |
+| `unsupported_parameter` | 422 | parameter has no equivalent for this provider |
 | `idempotency_conflict` | 409 | same `Idempotency-Key`, different body |
 | `idempotency_in_progress` | 409 | duplicate while the first attempt is running |
 | `route_exists` / `provider_exists` | 409 | duplicate admin create |

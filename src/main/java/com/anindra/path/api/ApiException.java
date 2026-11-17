@@ -54,6 +54,13 @@ public class ApiException extends RuntimeException {
         return new ApiException(402, "billing_error", "insufficient_credits", message);
     }
 
+    public static ApiException tooManyConcurrent(int limit) {
+        ApiException e = new ApiException(429, "rate_limit_error", "concurrency_limit_exceeded",
+                "Too many concurrent requests for this key (limit " + limit + ").");
+        e.retryAfterSeconds = 1;
+        return e;
+    }
+
     public static ApiException upstream(int status, String message, String code) {
         return new ApiException(status >= 400 ? status : 502, "upstream_error", code, message);
     }

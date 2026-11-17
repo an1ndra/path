@@ -6,6 +6,7 @@ import com.anindra.path.domain.ClientKey;
 import com.anindra.path.gateway.ApiKeyService;
 import com.anindra.path.gateway.ChatRequestSpec;
 import com.anindra.path.gateway.ChatService;
+import com.anindra.path.gateway.ConcurrencyLimiter;
 import com.anindra.path.gateway.IdempotencyService;
 import com.anindra.path.gateway.ModelCatalogService;
 import com.anindra.path.gateway.RouteResolver;
@@ -40,6 +41,7 @@ public class ChatCompletionsController {
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
     private final IdempotencyService idempotency;
+    private final ConcurrencyLimiter concurrency;
     private final GatewayProperties props;
 
     @PostMapping("/chat/completions")
@@ -54,6 +56,20 @@ public class ChatCompletionsController {
                     "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
         }
 
+        int limit = key.getMaxConcurrentRequests() != null
+                ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
+        if (!concurrency.tryAcquire(key.getId(), limit)) {
+            throw ApiException.tooManyConcurrent(limit);
+        }
+        try {
+            return handle(body, key, request, response);
+        } finally {
+            concurrency.release(key.getId());
+        }
+    }
+
+    private ResponseEntity<?> handle(ObjectNode body, ClientKey key, HttpServletRequest request,
+                                     HttpServletResponse response) throws IOException {
         ChatRequestSpec spec = ChatRequestSpec.parse(body);
         String idempotencyKey = normalizeIdempotencyKey(request.getHeader(IDEMPOTENCY_HEADER));
         String requestHash = idempotencyKey == null ? null : ApiKeyService.hash(body.toString());
@@ -77,7 +93,7 @@ public class ChatCompletionsController {
         try {
             result = chatService.complete(spec, key);
         } catch (RuntimeException e) {
-            abandon(idempotencyKey, key, requestHash);
+            abandon(idempotencyKey, key);
             throw e;
         }
 
@@ -102,7 +118,7 @@ public class ChatCompletionsController {
         try {
             chain = streamService.prepare(spec, key);
         } catch (RuntimeException e) {
-            abandon(idempotencyKey, key, requestHash);
+            abandon(idempotencyKey, key);
             throw e;
         }
 
@@ -117,7 +133,7 @@ public class ChatCompletionsController {
         try {
             completed = streamService.stream(capture, spec, key, chain);
         } catch (RuntimeException e) {
-            abandon(idempotencyKey, key, requestHash);
+            abandon(idempotencyKey, key);
             throw e;
         }
 
@@ -126,12 +142,12 @@ public class ChatCompletionsController {
                     "text/event-stream", capture.body());
         } else {
             // Not replayable: release the claim so a retry can run.
-            abandon(idempotencyKey, key, requestHash);
+            abandon(idempotencyKey, key);
         }
         return null;
     }
 
-    private void abandon(String idempotencyKey, ClientKey key, String requestHash) {
+    private void abandon(String idempotencyKey, ClientKey key) {
         if (idempotencyKey != null) {
             idempotency.abandon(key.getId(), idempotencyKey);
         }

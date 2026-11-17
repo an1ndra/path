@@ -118,7 +118,7 @@ public class ChatService {
 
                 TokenUsage tokens = adapter.parseUsage(upstreamJson);
                 if (!tokens.reported()) {
-                    tokens = estimate(spec, normalized);
+                    tokens = estimate(spec, normalized, rr.route().getUpstreamModelId());
                 }
 
                 String requestId = firstNonBlank(
@@ -161,7 +161,8 @@ public class ChatService {
     }
 
     /** Used only when a provider returns no usage block at all. */
-    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized) {        int prompt = spec.estimatePromptTokens();
+    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized, String upstreamModel) {
+        int prompt = spec.estimatePromptTokens(upstreamModel);
         JsonNode content = normalized.path("choices").path(0).path("message").path("content");
         int completion = content.isTextual() ? Math.max(1, content.asText().length() / 4) : 0;
         return TokenUsage.estimated(prompt, completion);

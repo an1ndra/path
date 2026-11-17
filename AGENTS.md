@@ -80,7 +80,7 @@ com.anindra.path
 
 - **No AI SDKs.** The gateway speaks HTTP + SSE with Jackson. SDKs own the request
   model and drop unknown fields, which breaks passthrough; they also add retries that
-  corrupt fallback accounting. See the README design notes.
+  corrupt fallback accounting. See docs/LIMITS.md.
 - **`promptTokens` means total prompt**, including cache reads and cache writes:
   `billableInput = prompt - cached - cacheWrite`. OpenAI reports cache as a subset;
   the Anthropic adapter sums it. Keep this invariant when adding providers.
@@ -107,6 +107,21 @@ com.anindra.path
 
 `src/main/resources/db/migration/` is the only source of truth. Hibernate validates on
 startup; a mismatch fails the boot. Tests run the same migrations against in-memory H2.
+
+## Documentation map
+
+`README.md` is the landing page. Details live in:
+
+| File | Contents |
+|---|---|
+| `docs/API.md` | endpoints, errors, idempotency, cache, embeddings |
+| `docs/ARCHITECTURE.md` | request flow, routing, metering fields |
+| `docs/CONFIGURATION.md` | every environment variable and profile |
+| `docs/OPERATIONS.md` | admin API, metrics, migrations, alerts |
+| `docs/LIMITS.md` | design notes and known gaps |
+| `docs/TESTING.md` | test suites and the mock upstream |
+
+Keep README short: a feature can be one bullet there and a section in the matching doc.
 
 ## Testing
 

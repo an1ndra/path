@@ -41,6 +41,28 @@ public class GatewayProperties {
     /** Null means unlimited unless set. */
     private BigDecimal defaultCreditLimitUsd;
 
+    private Breaker breaker = new Breaker();
+    private Idempotency idempotency = new Idempotency();
+
+    @Getter
+    @Setter
+    public static class Breaker {
+        /** Consecutive failures before a provider is parked. */
+        private int failureThreshold = 5;
+        /** How long a provider stays parked after opening. */
+        private Duration openDuration = Duration.ofSeconds(30);
+        /** Routes tried per request, including the first. */
+        private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class Idempotency {
+        private Duration ttl = Duration.ofHours(24);
+        /** Responses larger than this are not stored for replay. */
+        private int maxResponseBytes = 2_097_152;
+    }
+
     private Providers providers = new Providers();
 
     @Getter

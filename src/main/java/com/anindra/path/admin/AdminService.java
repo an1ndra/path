@@ -7,6 +7,7 @@ import com.anindra.path.domain.Provider;
 import com.anindra.path.domain.ProviderType;
 import com.anindra.path.gateway.ApiKeyService;
 import com.anindra.path.gateway.ProviderCredentials;
+import com.anindra.path.gateway.ProviderCircuitBreaker;
 import com.anindra.path.gateway.UsageService;
 import com.anindra.path.repo.ClientKeyRepository;
 import com.anindra.path.repo.ModelRouteRepository;
@@ -65,6 +66,7 @@ public class AdminService {
     private final ProviderCredentials credentials;
     private final ApiKeyService apiKeys;
     private final UsageService usage;
+    private final ProviderCircuitBreaker breaker;
 
     // -------------------------------------------------------------- providers
 
@@ -140,6 +142,8 @@ public class AdminService {
         view.put("credential_source", credentials.source(p));
         view.put("credential_configured", credentials.apiKey(p) != null);
         view.put("credential_hint", credentials.hint(p));
+        view.put("circuit_state", breaker.state(p.getId()).name().toLowerCase());
+        view.put("circuit_retry_after_seconds", breaker.retryAfterSeconds(p.getId()));
         view.put("created_at", p.getCreatedAt().toString());
         view.put("route_count", routes.findByProviderId(p.getId()).size());
         return view;

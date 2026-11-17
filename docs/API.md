@@ -43,6 +43,9 @@ Every failure uses the OpenAI envelope:
 | `upstream_timeout` | 504 | connect/read/idle timeout |
 | `upstream_error` | 502 | upstream 5xx or unmapped failure |
 | `all_providers_failed` | 502 | every route in the chain failed |
+| `circuit_open` | 503 | provider parked by the circuit breaker |
+| `idempotency_conflict` | 409 | same `Idempotency-Key`, different body |
+| `idempotency_in_progress` | 409 | duplicate while the first attempt is running |
 | `route_exists` / `provider_exists` | 409 | duplicate admin create |
 
 ---
@@ -90,6 +93,29 @@ Response headers:
 | `X-Gateway-Upstream-Model` | `llama-3.3-70b-versatile` | upstream id used |
 | `X-Gateway-Cost-Usd` | `0.00000548` | 8-decimal itemised total |
 | `X-Gateway-Latency-Ms` | `412` | end-to-end |
+| `X-Idempotent-Replay` | `true` | present only when replaying a stored response |
+
+**Idempotency**
+
+Send an `Idempotency-Key` header (up to 255 characters) to make a request safe to retry:
+
+```bash
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: 7f2c-orders-2026-11-17-001" \
+  -d '{...}'
+```
+
+| Situation | Result |
+|---|---|
+| First request | runs normally, response stored for `GATEWAY_IDEMPOTENCY_TTL` |
+| Repeat, same body | stored response replayed, `X-Idempotent-Replay: true`, no upstream call, no charge |
+| Repeat, different body | `409 idempotency_conflict` |
+| Repeat while first is still running | `409 idempotency_in_progress` |
+
+Streaming responses are captured and replayed as the same SSE sequence. A response
+larger than `GATEWAY_IDEMPOTENCY_MAX_BYTES` is not stored; a retry will call the
+provider again.
 
 **Streaming**
 

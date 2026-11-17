@@ -28,7 +28,7 @@ def check(name, condition, detail=""):
     print(("PASS  " if condition else "FAIL  ") + name + (("  [" + detail + "]") if detail and not condition else ""))
 
 
-def req(method, path, body=None, key=None, admin=False, timeout=30):
+def req(method, path, body=None, key=None, admin=False, timeout=30, headers=None):
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(BASE + path, data=data, method=method)
     request.add_header("Content-Type", "application/json")
@@ -36,6 +36,8 @@ def req(method, path, body=None, key=None, admin=False, timeout=30):
         request.add_header("Authorization", "Bearer " + key)
     if admin:
         request.add_header("X-Admin-Token", ADMIN)
+    for name, value in (headers or {}).items():
+        request.add_header(name, value)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
             return resp.status, dict(resp.headers), resp.read()
@@ -52,11 +54,13 @@ def jreq(*args, **kwargs):
     return status, headers, parsed
 
 
-def sse_post(path, body, key, timeout=60):
+def sse_post(path, body, key, timeout=60, headers=None):
     """Returns (status, headers, list_of_data_payloads)."""
     request = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), method="POST")
     request.add_header("Content-Type", "application/json")
     request.add_header("Authorization", "Bearer " + key)
+    for name, value in (headers or {}).items():
+        request.add_header(name, value)
     try:
         resp = urllib.request.urlopen(request, timeout=timeout)
     except urllib.error.HTTPError as e:
@@ -185,6 +189,28 @@ def main():
     check("anthropic stream content assembled", text == "Hello from mock Anthropic.", repr(text))
     check("anthropic stream finish_reason stop", finish == "stop", str(finish))
     check("anthropic stream [DONE]", payloads and payloads[-1] == "[DONE]")
+
+    # -------------------------------------------------------------- idempotency
+    idem_body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "idem"}]}
+    s1, h1, b1 = jreq("POST", "/v1/chat/completions", idem_body, key=key,
+                      headers={"Idempotency-Key": "smoke-idem-a"})
+    s2, h2, b2 = jreq("POST", "/v1/chat/completions", idem_body, key=key,
+                      headers={"Idempotency-Key": "smoke-idem-a"})
+    check("idempotent replay returns the same body", s1 == 200 and s2 == 200 and b1 == b2, f"{s1}/{s2}")
+    check("replay is flagged with X-Idempotent-Replay", h2.get("X-Idempotent-Replay") == "true",
+          str(h2.get("X-Idempotent-Replay")))
+
+    s3, _, b3 = jreq("POST", "/v1/chat/completions",
+                     {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "different"}]},
+                     key=key, headers={"Idempotency-Key": "smoke-idem-a"})
+    check("reused key with a different body is rejected",
+          s3 == 409 and b3.get("error", {}).get("code") == "idempotency_conflict", str(s3) + str(b3)[:120])
+
+    stream_idem = {"model": "gpt-4o-mini", "stream": True,
+                   "messages": [{"role": "user", "content": "idem stream"}]}
+    _, _, p4 = sse_post("/v1/chat/completions", stream_idem, key, headers={"Idempotency-Key": "smoke-idem-s"})
+    _, _, p5 = sse_post("/v1/chat/completions", stream_idem, key, headers={"Idempotency-Key": "smoke-idem-s"})
+    check("streamed replay is identical", p4 == p5 and len(p4) > 1, f"{len(p4)}/{len(p5)}")
 
     # -------------------------------------------------------- fallback by chain
     for payload, label in [

@@ -3,6 +3,7 @@ package com.anindra.path.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.anindra.path.api.ApiException;
+import com.anindra.path.config.GatewayProperties;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.domain.Provider;
 import com.anindra.path.domain.ProviderType;
@@ -30,17 +31,22 @@ public class ChatService {
     private final UpstreamClient upstream;
     private final UsageService usage;
     private final CreditGuard creditGuard;
+    private final ProviderCircuitBreaker breaker;
+    private final GatewayProperties props;
     private final ObjectMapper mapper;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
-                       UsageService usage, CreditGuard creditGuard, ObjectMapper mapper,
+                       UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
+                       GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
         this.creditGuard = creditGuard;
+        this.breaker = breaker;
+        this.props = props;
         this.mapper = mapper;
         adapterList.forEach(a -> adapters.put(a.type(), a));
     }
@@ -55,10 +61,23 @@ public class ChatService {
         int attempts = 0;
         String fallbackFrom = null;
 
-        for (int i = 0; i < chain.size(); i++) {
+        long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
+        int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
+
+        for (int i = 0; i < chain.size() && attempts < maxAttempts; i++) {
             RouteResolver.ResolvedRoute rr = chain.get(i);
             ProviderAdapter adapter = adapterFor(rr.provider());
             String apiKey = credentials.apiKey(rr.provider());
+            Long providerId = rr.provider().getId();
+
+            if (available > 0 && !breaker.isAvailable(providerId)) {
+                lastError = new ApiException(503, "upstream_error", "circuit_open",
+                        "Provider '" + rr.providerSlug() + "' is temporarily unavailable.");
+                failures.add(rr.providerSlug() + ": circuit open");
+                fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
+                continue;
+            }
+
             attempts++;
 
             if (apiKey == null) {
@@ -75,8 +94,12 @@ public class ChatService {
                 UpstreamClient.Response response = upstream.postJson(request.url(), request.headers(), request.body());
 
                 if (!response.ok()) {
-                    UpstreamException failure = UpstreamClient.mapError(response.status(), response.body());
+                    UpstreamException failure = UpstreamClient.mapError(
+                            response.status(), response.body(), response.headers());
                     log.warn("Upstream {} -> {}: {}", rr.providerSlug(), failure.status(), failure.getMessage());
+                    if (failure.retryable()) {
+                        recordBreakerFailure(providerId, failure);
+                    }
                     if (failure.retryable() && i < chain.size() - 1) {
                         failures.add(rr.providerSlug() + ": " + failure.getMessage());
                         lastError = toApiException(failure);
@@ -108,9 +131,11 @@ public class ChatService {
                 long latency = elapsedMs(started);
                 BigDecimal cost = usage.recordSuccess(key, spec, rr, tokens,
                         UsageService.CallMeta.nonStream(latency, requestId, finishReason, attempts, fallbackFrom));
+                breaker.onSuccess(providerId);
                 return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost, latency);
 
             } catch (IOException e) {
+                breaker.onFailure(providerId);
                 lastError = ApiException.upstream(502,
                         "Could not reach " + rr.providerSlug() + ": " + e.getMessage(), "upstream_network_error");
                 failures.add(rr.providerSlug() + ": " + e.getMessage());
@@ -136,11 +161,18 @@ public class ChatService {
     }
 
     /** Used only when a provider returns no usage block at all. */
-    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized) {
-        int prompt = spec.estimatePromptTokens();
+    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized) {        int prompt = spec.estimatePromptTokens();
         JsonNode content = normalized.path("choices").path(0).path("message").path("content");
         int completion = content.isTextual() ? Math.max(1, content.asText().length() / 4) : 0;
         return TokenUsage.estimated(prompt, completion);
+    }
+
+    private void recordBreakerFailure(Long providerId, UpstreamException failure) {
+        if (failure.status() == 429 && failure.retryAfterSeconds() > 0) {
+            breaker.onRateLimited(providerId, java.time.Duration.ofSeconds(failure.retryAfterSeconds()));
+        } else {
+            breaker.onFailure(providerId);
+        }
     }
 
     private ProviderAdapter adapterFor(Provider provider) {

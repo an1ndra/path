@@ -72,7 +72,7 @@ public class UpstreamClient {
             try (InputStream in = resp.body()) {
                 errorBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            throw mapError(resp.statusCode(), errorBody);
+            throw mapError(resp.statusCode(), errorBody, flatten(resp));
         }
         return new LineStream(resp.body(), flatten(resp));
     }
@@ -92,6 +92,10 @@ public class UpstreamClient {
     }
 
     public static UpstreamException mapError(int status, String body) {
+        return mapError(status, body, Map.of());
+    }
+
+    public static UpstreamException mapError(int status, String body, Map<String, String> headers) {
         String message = body;
         String code = "upstream_error";
         try {
@@ -121,7 +125,23 @@ public class UpstreamClient {
         if (status == 429) {
             code = "upstream_rate_limited";
         }
-        return new UpstreamException(status, code, truncate(message, 800));
+        return new UpstreamException(status, code, truncate(message, 800), retryAfterSeconds(headers));
+    }
+
+    /** Parses Retry-After in seconds. HTTP-date form is treated as 5s. */
+    private static int retryAfterSeconds(Map<String, String> headers) {
+        if (headers == null) {
+            return 0;
+        }
+        String raw = headers.get("retry-after");
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Math.min(3600, Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException e) {
+            return 5;
+        }
     }
 
     private static String truncate(String s, int max) {

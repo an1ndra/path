@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (17)
+# unit + integration tests (28)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (68 checks, no real keys)
+# full end-to-end suite against a mock upstream (72 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -45,6 +45,8 @@ com.anindra.path
 │   ├── AnthropicAdapter          Messages API, tools, cache tokens
 │   ├── ChatService               non-streaming path with fallback
 │   ├── StreamService             SSE path; owns commit semantics
+│   ├── ProviderCircuitBreaker    per-provider OPEN/HALF_OPEN/CLOSED, Retry-After
+│   ├── IdempotencyService        Idempotency-Key claims and replay
 │   ├── RouteResolver             public model id → ordered chain
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
@@ -101,7 +103,9 @@ com.anindra.path
 - `AnthropicAdapterTest` — request translation (system, images, tools, tool results),
   response translation, stream events, cache tokens.
 - `UsageCostTest` — cost breakdown, cache pricing, missing prices, usage parsing.
-- `tools/smoke_test.py` — 68 checks against `tools/mock-upstream.py`. The mock can
+- `ProviderCircuitBreakerTest` — threshold, half-open probe, rate-limit parking.
+- `IdempotencyServiceTest` — replay, conflicts, concurrent claims, key scoping.
+- `tools/smoke_test.py` — 72 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -119,6 +123,11 @@ a smoke check. Never claim a fix without running both.
 
 - **`ddl-auto: update`** adds columns but cannot rename or drop them cleanly. Flyway is
   still the missing piece before any real deployment.
+- **The circuit breaker is in-memory per node.** Like the rate limiter, state is not
+  shared between instances; a restart clears it. That is deliberate for v1.
+- **Idempotency claims are written before the upstream call.** If the process dies
+  mid-request the row stays PENDING until `GATEWAY_IDEMPOTENCY_TTL`, so retries get
+  409 `idempotency_in_progress`. The purge job only removes expired rows.
 - **Rate limiting is in-memory**, one node. Running two instances doubles the effective
   RPM limit.
 - **H2 rejects `AUTO_SERVER=TRUE` together with `DB_CLOSE_ON_EXIT`.** Don't re-add it.

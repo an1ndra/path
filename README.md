@@ -231,7 +231,8 @@ Errors use the OpenAI envelope:
 
 Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 `model_not_found`, `insufficient_credits`, `rate_limit_exceeded`,
-`upstream_timeout`, `upstream_error`, `provider_auth_error`, `all_providers_failed`.
+`upstream_timeout`, `upstream_error`, `provider_auth_error`, `all_providers_failed`,
+`circuit_open`, `idempotency_conflict`, `idempotency_in_progress`.
 
 ## Configuration
 
@@ -246,6 +247,11 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_BOOTSTRAP_DEMO_KEY` | `true` | create a demo key when the table is empty |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
+| `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
+| `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
+| `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
+| `GATEWAY_IDEMPOTENCY_TTL` | `24h` | how long a completed response stays replayable |
+| `GATEWAY_IDEMPOTENCY_MAX_BYTES` | `2097152` | responses larger than this are not stored for replay |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` | — | upstream credentials |
 | `GATEWAY_UPSTREAM_<SLUG>_KEY` | — | credential for any other provider slug |
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | H2 file | database |
@@ -284,6 +290,17 @@ python3 tools/smoke_test.py        # 49 checks
 
 ## Design notes and limits
 
+- **Idempotency is opt-in per request.** Send `Idempotency-Key` and a repeat of the
+  same request replays the stored response (streams included) with
+  `X-Idempotent-Replay: true`; a different body under the same key gets 409
+  `idempotency_conflict`, and a concurrent duplicate gets 409
+  `idempotency_in_progress`. Completed responses are kept for
+  `GATEWAY_IDEMPOTENCY_TTL`. A response larger than
+  `GATEWAY_IDEMPOTENCY_MAX_BYTES` is not stored, so a retry calls the provider again.
+- **Circuit breaker per provider.** Five consecutive failures park a provider for 30s
+  (both configurable); routes on a parked provider are skipped in microseconds instead
+  of costing a connect timeout. An upstream 429 with `Retry-After` parks the provider
+  for exactly that long. State is visible as `circuit_state` on `/admin/providers`.
 - **Rate limiting is in-memory, one node.** It is exact on a single instance and
   approximate across a cluster. Move the map in `RateLimiter` to Redis for multi-node.
 - **Credits are charged after the call** from reported token usage, with a worst-case

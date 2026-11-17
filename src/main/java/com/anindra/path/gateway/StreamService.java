@@ -40,18 +40,20 @@ public class StreamService {
     private final UpstreamClient upstream;
     private final UsageService usage;
     private final CreditGuard creditGuard;
+    private final ProviderCircuitBreaker breaker;
     private final ObjectMapper mapper;
     private final GatewayProperties props;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public StreamService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
-                         UsageService usage, CreditGuard creditGuard, ObjectMapper mapper,
-                         GatewayProperties props, List<ProviderAdapter> adapterList) {
+                         UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
+                         ObjectMapper mapper, GatewayProperties props, List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
         this.creditGuard = creditGuard;
+        this.breaker = breaker;
         this.mapper = mapper;
         this.props = props;
         adapterList.forEach(a -> adapters.put(a.type(), a));
@@ -65,8 +67,8 @@ public class StreamService {
     }
 
     /** Blocks for the whole stream. Safe on a virtual thread. */
-    public void stream(HttpServletResponse response, ChatRequestSpec spec, ClientKey key,
-                       List<RouteResolver.ResolvedRoute> chain) throws IOException {
+    public boolean stream(HttpServletResponse response, ChatRequestSpec spec, ClientKey key,
+                          List<RouteResolver.ResolvedRoute> chain) throws IOException {
         response.setStatus(200);
         response.setContentType("text/event-stream;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-transform");
@@ -85,11 +87,23 @@ public class StreamService {
         String requestId = null;
         String finishReason = null;
         int generatedChars = 0;
+        long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
+        int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
 
-        for (int i = 0; i < chain.size(); i++) {
+        for (int i = 0; i < chain.size() && attempts < maxAttempts; i++) {
             RouteResolver.ResolvedRoute rr = chain.get(i);
             Provider provider = rr.provider();
             ProviderAdapter adapter = adapters.get(provider.getType());
+            Long providerId = provider.getId();
+
+            if (available > 0 && !breaker.isAvailable(providerId)) {
+                lastError = new ApiException(503, "upstream_error", "circuit_open",
+                        "Provider '" + provider.getSlug() + "' is temporarily unavailable.");
+                failures.add(provider.getSlug() + ": circuit open");
+                fallbackFrom = fallbackFrom == null ? provider.getSlug() : fallbackFrom;
+                continue;
+            }
+
             attempts++;
 
             if (adapter == null) {
@@ -168,9 +182,17 @@ public class StreamService {
                 log.info("stream ok model={} provider={} tokens={} cached={} cost={} ttft={}ms latency={}ms",
                         spec.publicModel(), provider.getSlug(), tokens.total(), tokens.cached(),
                         cost.toPlainString(), ttftMs, latency);
-                return;
+                breaker.onSuccess(providerId);
+                return true;
 
             } catch (UpstreamException e) {
+                if (e.retryable()) {
+                    if (e.status() == 429 && e.retryAfterSeconds() > 0) {
+                        breaker.onRateLimited(providerId, java.time.Duration.ofSeconds(e.retryAfterSeconds()));
+                    } else {
+                        breaker.onFailure(providerId);
+                    }
+                }
                 lastError = ChatService.toApiException(e);
                 if (!committed && e.retryable() && i < chain.size() - 1) {
                     log.warn("Stream route {} failed before first chunk ({}), trying next",
@@ -182,9 +204,10 @@ public class StreamService {
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
                         ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
-                return;
+                return false;
 
             } catch (TimeoutException e) {
+                breaker.onFailure(providerId);
                 lastError = new ApiException(504, "upstream_error", "upstream_timeout",
                         "The upstream sent nothing for " + props.getStreamIdleTimeout().toSeconds() + "s.");
                 if (!committed && i < chain.size() - 1) {
@@ -195,9 +218,10 @@ public class StreamService {
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
                         ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
-                return;
+                return false;
 
             } catch (IOException e) {
+                breaker.onFailure(providerId);
                 if (!committed) {
                     lastError = ApiException.upstream(502,
                             "Could not reach " + provider.getSlug() + ": " + e.getMessage(),
@@ -218,11 +242,11 @@ public class StreamService {
                 } catch (IOException clientGone) {
                     log.debug("Client disconnected after upstream failure");
                 }
-                return;
+                return false;
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
 
             } finally {
                 if (stream != null) {
@@ -240,6 +264,7 @@ public class StreamService {
         usage.recordError(key, spec, null, null, ChatService.elapsedMs(started), true, attempts,
                 lastError.code(), lastError.getMessage());
         emitError(out, lastError);
+        return false;
     }
 
     private void send(OutputStream out, String data) throws IOException {

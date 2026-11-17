@@ -1,16 +1,21 @@
 package com.anindra.path.api;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.anindra.path.config.AuthFilter;
+import com.anindra.path.config.GatewayProperties;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.gateway.ApiKeyService;
 import com.anindra.path.gateway.ChatRequestSpec;
 import com.anindra.path.gateway.ChatService;
+import com.anindra.path.gateway.IdempotencyService;
 import com.anindra.path.gateway.ModelCatalogService;
+import com.anindra.path.gateway.RouteResolver;
 import com.anindra.path.gateway.StreamService;
 import com.anindra.path.gateway.UsageService;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +23,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** OpenAI-compatible public surface. */
@@ -26,16 +32,21 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ChatCompletionsController {
 
+    public static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
+
     private final ChatService chatService;
     private final StreamService streamService;
     private final ModelCatalogService catalog;
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
+    private final IdempotencyService idempotency;
+    private final GatewayProperties props;
 
     @PostMapping("/chat/completions")
     public ResponseEntity<?> chatCompletions(
             @RequestBody ObjectNode body,
             @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key,
+            HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
         if (key == null) {
@@ -44,21 +55,98 @@ public class ChatCompletionsController {
         }
 
         ChatRequestSpec spec = ChatRequestSpec.parse(body);
+        String idempotencyKey = normalizeIdempotencyKey(request.getHeader(IDEMPOTENCY_HEADER));
+        String requestHash = idempotencyKey == null ? null : ApiKeyService.hash(body.toString());
 
-        if (spec.stream()) {
-            // Resolve and authorise before any bytes are written so errors keep their status.
-            var chain = streamService.prepare(spec, key);
-            streamService.stream(response, spec, key, chain);
-            return null;
+        if (idempotencyKey != null) {
+            var replay = idempotency.begin(key.getId(), idempotencyKey, requestHash);
+            if (replay.isPresent()) {
+                IdempotencyService.Replay stored = replay.get();
+                return ResponseEntity.status(stored.httpStatus())
+                        .contentType(MediaType.parseMediaType(stored.contentType()))
+                        .header("X-Idempotent-Replay", "true")
+                        .body(stored.body());
+            }
         }
 
-        ChatService.Result result = chatService.complete(spec, key);
+        if (spec.stream()) {
+            return streamCompletion(spec, key, idempotencyKey, requestHash, response);
+        }
+
+        ChatService.Result result;
+        try {
+            result = chatService.complete(spec, key);
+        } catch (RuntimeException e) {
+            abandon(idempotencyKey, key, requestHash);
+            throw e;
+        }
+
+        if (idempotencyKey != null) {
+            idempotency.complete(key.getId(), idempotencyKey, 200,
+                    MediaType.APPLICATION_JSON_VALUE, result.body().toString());
+        }
+
         return ResponseEntity.ok()
                 .header("X-Gateway-Provider", result.providerSlug())
                 .header("X-Gateway-Upstream-Model", result.upstreamModel())
                 .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
                 .header("X-Gateway-Latency-Ms", String.valueOf(result.latencyMs()))
                 .body(result.body());
+    }
+
+    private ResponseEntity<?> streamCompletion(ChatRequestSpec spec, ClientKey key, String idempotencyKey,
+                                               String requestHash, HttpServletResponse response)
+            throws IOException {
+
+        List<RouteResolver.ResolvedRoute> chain;
+        try {
+            chain = streamService.prepare(spec, key);
+        } catch (RuntimeException e) {
+            abandon(idempotencyKey, key, requestHash);
+            throw e;
+        }
+
+        if (idempotencyKey == null) {
+            streamService.stream(response, spec, key, chain);
+            return null;
+        }
+
+        CapturingResponseWrapper capture =
+                new CapturingResponseWrapper(response, props.getIdempotency().getMaxResponseBytes());
+        boolean completed;
+        try {
+            completed = streamService.stream(capture, spec, key, chain);
+        } catch (RuntimeException e) {
+            abandon(idempotencyKey, key, requestHash);
+            throw e;
+        }
+
+        if (completed && !capture.overflowed()) {
+            idempotency.complete(key.getId(), idempotencyKey, 200,
+                    "text/event-stream", capture.body());
+        } else {
+            // Not replayable: release the claim so a retry can run.
+            abandon(idempotencyKey, key, requestHash);
+        }
+        return null;
+    }
+
+    private void abandon(String idempotencyKey, ClientKey key, String requestHash) {
+        if (idempotencyKey != null) {
+            idempotency.abandon(key.getId(), idempotencyKey);
+        }
+    }
+
+    private static String normalizeIdempotencyKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.length() > 255) {
+            throw ApiException.badRequest(
+                    "Idempotency-Key must be at most 255 characters.", IDEMPOTENCY_HEADER);
+        }
+        return value;
     }
 
     @GetMapping("/models")

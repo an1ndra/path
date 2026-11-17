@@ -109,11 +109,15 @@ public class GatewayProperties {
         private int maxFailures = 10;
         private Duration window = Duration.ofMinutes(5);
         /**
-         * Failures across ALL addresses in the window. The per-address cap alone is worth
-         * nothing against a rotating source (Cloudflare edge addresses, spoofed forwarding
-         * headers), which is exactly how the admin limiter was bypassed.
+         * Failures across ALL addresses in the window, or 0 to disable.
+         *
+         * Off by default on purpose: a fail-closed global cap is a denial-of-service against
+         * the operator (one scanner spending 200 guesses locks the console for the whole
+         * window). The per-address cap is the real control once the client address is
+         * trustworthy — which it is only when the origin is not reachable except through the
+         * trusted proxy. Enable this for a deployment that cannot make that guarantee.
          */
-        private int globalMaxFailures = 200;
+        private int globalMaxFailures = 0;
     }
 
     @Getter

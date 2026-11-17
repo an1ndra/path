@@ -68,4 +68,23 @@ class AdminAuthLimiterTest {
         limiter.onFailure("203.0.113.1");
         assertThat(limiter.retryAfterSeconds("198.51.100.7")).isZero();
     }
+
+    @Test
+    void theGlobalCapIsOffByDefaultSoAScannerCannotLockTheOperatorOut() {
+        // A fail-closed global cap is a denial-of-service: one hostile source spending the
+        // budget in the window locks the console for everybody, including the operator.
+        GatewayProperties props = new GatewayProperties();
+        props.getAdminAuth().setMaxFailures(2);
+        props.getAdminAuth().setWindow(Duration.ofMinutes(5));
+        AdminAuthLimiter limiter = new AdminAuthLimiter(props);
+
+        for (int i = 0; i < 500; i++) {
+            limiter.onFailure("203.0.113.200");
+        }
+
+        assertThat(props.getAdminAuth().getGlobalMaxFailures()).isZero();
+        assertThat(limiter.retryAfterSeconds("198.51.100.7")).isZero();
+        // The noisy address itself is still stopped.
+        assertThat(limiter.retryAfterSeconds("203.0.113.200")).isGreaterThan(0);
+    }
 }

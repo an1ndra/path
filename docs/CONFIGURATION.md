@@ -62,7 +62,7 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_GUARDRAILS_MODERATION` | `false` | pre-flight moderation call (OpenAI-shaped providers) |
 | `GATEWAY_GUARDRAILS_MODERATION_MODEL` | `omni-moderation-latest` | model used for that call |
 | `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts per address before 429s |
-| `GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES` | `200` | failures across all addresses in the window; stops a rotating source |
+| `GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES` | `0` (off) | failures across all addresses in the window; only for an origin that cannot be reached except through a trusted proxy |
 | `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
 | `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |
 | `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |

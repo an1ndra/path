@@ -79,6 +79,10 @@ services:
       traefik.http.routers.path-gateway.rule: "Host(`path.hacksubset.com`)"
       traefik.http.routers.path-gateway.entrypoints: "websecure"
       traefik.http.routers.path-gateway.tls: "true"
+      # Only Cloudflare's edge may reach this router. Without it the origin answers on its
+      # own public IP, so any client can skip Cloudflare (and its bot challenge) entirely and
+      # forge client-IP headers, which defeats every per-address rate limit.
+      traefik.http.routers.path-gateway.middlewares: "cf-only@file"
       traefik.http.routers.path-gateway.service: "path-gateway"
       traefik.http.services.path-gateway.loadbalancer.server.port: "8080"
     # More than the drain timeout, or a redeploy truncates live streams.

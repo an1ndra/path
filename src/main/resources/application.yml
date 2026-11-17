@@ -82,7 +82,7 @@ gateway:
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
-    global-max-failures: ${GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES:200}
+    global-max-failures: ${GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES:0}
   guardrails:
     prompt-log-redaction: ${GATEWAY_GUARDRAILS_LOG_REDACTION:true}
     redact-before-send: ${GATEWAY_GUARDRAILS_REDACT:false}

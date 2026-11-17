@@ -39,7 +39,8 @@ public class AdminAuthLimiter {
 
         synchronized (globalLock) {
             rollGlobalWindow(now, windowMs);
-            if (globalFailures >= props.getAdminAuth().getGlobalMaxFailures()) {
+            int limit = props.getAdminAuth().getGlobalMaxFailures();
+            if (limit > 0 && globalFailures >= limit) {
                 return remainingSeconds(now, globalWindowStart, windowMs);
             }
         }

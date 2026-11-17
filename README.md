@@ -85,6 +85,7 @@ print(client.chat.completions.create(
 | [Operations](docs/OPERATIONS.md) | Admin API, metrics, tracing, migrations, alerts, load testing |
 | [Limits](docs/LIMITS.md) | Design decisions and known gaps |
 | [Testing](docs/TESTING.md) | Unit tests, the 99-check smoke suite, the mock upstream |
+| [Roadmap](docs/ROADMAP.md) | Delivered work and the three open stories |
 | [AGENTS.md](AGENTS.md) | Contributor conventions and gotchas |
 | [Postman](docs/path.postman_collection.json) | 26 requests over the public and admin surfaces |
 

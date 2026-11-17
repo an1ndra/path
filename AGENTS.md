@@ -120,6 +120,7 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 | `docs/OPERATIONS.md` | admin API, metrics, migrations, alerts |
 | `docs/LIMITS.md` | design notes and known gaps |
 | `docs/TESTING.md` | test suites and the mock upstream |
+| `docs/ROADMAP.md` | delivered work and the open stories (#20, #33, #37) |
 
 Keep README short: a feature can be one bullet there and a section in the matching doc.
 

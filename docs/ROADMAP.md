@@ -5,16 +5,41 @@ anyone reading the repo rather than the issue tracker.
 
 ## Open stories
 
+Ordered by the value they add per day of work, not by severity.
+
+### Product
+
 | # | Story | Why it matters |
 |---|---|---|
-| [#62](https://github.com/an1ndra/path/issues/62) | Spring AI `ChatModel` adapter module | a JVM-native gateway a Spring AI app cannot use is not much of a JVM gateway; also gives the published artifact a reason to exist |
+| [#62](https://github.com/an1ndra/path/issues/62) | Spring AI `ChatModel` adapter module | a JVM-native gateway a Spring AI app cannot use is not much of a JVM gateway; it also gives the published artifact a reason to exist |
 | [#63](https://github.com/an1ndra/path/issues/63) | Adaptive routing by latency and cost | routing is static today, so a slow-but-alive provider keeps the traffic until it 5xxs |
 | [#64](https://github.com/an1ndra/path/issues/64) | End-user attribution and budgets | a key and a project are operator concepts; without an end-user axis the gateway cannot bill a product's own customers |
-| [#61](https://github.com/an1ndra/path/issues/61) | Retention and partitioning for `usage_records` | retention shipped; monthly partitioning has not |
+| [#71](https://github.com/an1ndra/path/issues/71) | Semantic cache tier | exact-match caching only catches literal repeats; needs an explicit opt-in because a near-duplicate hit is a different prompt |
+| [#70](https://github.com/an1ndra/path/issues/70) | PII redaction and moderation passthrough | prompt logging is a PII store today; a product embedding the gateway has no policy hook |
+
+### Billing and limits
+
+| # | Story | Why it matters |
+|---|---|---|
+| [#65](https://github.com/an1ndra/path/issues/65) | Per-project rate limits | forty keys in a project can push 4,800 rpm with nothing to cap them |
+| [#67](https://github.com/an1ndra/path/issues/67) | `Idempotency-Key` on `/v1/embeddings` | a retried embedding batch is billed twice; the machinery already exists for chat |
+| [#69](https://github.com/an1ndra/path/issues/69) | Project-scoped budget alerts | a project budget currently fails silently at 100% |
+| [#66](https://github.com/an1ndra/path/issues/66) | `/v1/tokens/count` | `jtokkit` is already in the process; clients guess instead |
+| [#68](https://github.com/an1ndra/path/issues/68) | User-defined model aliases | `cheap` can move to another model after a price edit; products need a stable chain |
+
+### Reach and operations
+
+| # | Story | Why it matters |
+|---|---|---|
+| [#73](https://github.com/an1ndra/path/issues/73) | Azure OpenAI support | the default enterprise OpenAI path, currently unimplementable through the adapter |
+| [#72](https://github.com/an1ndra/path/issues/72) | Helm chart | only compose today; the drain and migration subtleties deserve to be written down once |
+| [#74](https://github.com/an1ndra/path/issues/74) | Valkey-shared breaker and limiter | per-JVM state means replicas disagree about a dead provider |
+| [#75](https://github.com/an1ndra/path/issues/75) | Vertex AI / Gemini native | `thinkingConfig` and `safetySettings` are dropped today, which contradicts the 422 contract |
+| [#61](https://github.com/an1ndra/path/issues/61) | Usage retention and partitioning | retention shipped; monthly partitioning has not |
 | [#59](https://github.com/an1ndra/path/issues/59) | Publish to Maven Central | needs a verified namespace, a GPG key and a Portal token |
 
-Everything else from the post-0.1.0 audit (#38–#51) is closed and shipped in `93ae278`;
-see Delivered below.
+Everything from the post-0.1.0 audit (#38–#51) is closed and shipped in `93ae278`; see
+Delivered below.
 
 ## Delivered
 

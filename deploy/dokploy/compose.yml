@@ -70,6 +70,17 @@ services:
     # OPENAI_API_KEY / ANTHROPIC_API_KEY / GROQ_API_KEY / GEMINI_API_KEY.
     ports:
       - "8080:8080"
+    # Routing is declared here rather than left to the Dokploy UI, so a redeploy always
+    # produces the router. TLS uses the server's default certificate (Cloudflare Origin
+    # certificate when Cloudflare is in front), which is what the proxy validates against.
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "dokploy-network"
+      traefik.http.routers.path-gateway.rule: "Host(`path.hacksubset.com`)"
+      traefik.http.routers.path-gateway.entrypoints: "websecure"
+      traefik.http.routers.path-gateway.tls: "true"
+      traefik.http.routers.path-gateway.service: "path-gateway"
+      traefik.http.services.path-gateway.loadbalancer.server.port: "8080"
     # More than the drain timeout, or a redeploy truncates live streams.
     stop_grace_period: 40s
     volumes:

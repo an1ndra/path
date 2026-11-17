@@ -5,8 +5,37 @@ anyone reading the repo rather than the issue tracker.
 
 ## Open stories
 
-None. Every story raised against the 0.1.0 line is delivered; new ones go in the issue
-tracker and get a row here.
+From the post-0.1.0 audit. Severity is the reviewer's call, not a promise.
+
+### Security
+
+| # | Story | Severity |
+|---|---|---|
+| [#39](https://github.com/an1ndra/path/issues/39) | 500 responses leak internal exception messages | high |
+| [#41](https://github.com/an1ndra/path/issues/41) | Demo API key enabled by default, including the prod profile | high |
+| [#40](https://github.com/an1ndra/path/issues/40) | Request size limit bypassable with chunked encoding | medium |
+| [#42](https://github.com/an1ndra/path/issues/42) | Admin API has no rate limit or lockout | medium |
+| [#43](https://github.com/an1ndra/path/issues/43) | No master-key rotation path | medium |
+| [#51](https://github.com/an1ndra/path/issues/51) | OpenAPI document served without authentication | low |
+
+### Billing
+
+| # | Story | Severity |
+|---|---|---|
+| [#38](https://github.com/an1ndra/path/issues/38) | Model sync publishes unpriced, enabled routes (free inference) | high |
+| [#44](https://github.com/an1ndra/path/issues/44) | Worst-case reservation can reject a request that would fit | medium |
+
+### API and operations
+
+| # | Story | Severity |
+|---|---|---|
+| [#45](https://github.com/an1ndra/path/issues/45) | Project filters missing from `/admin/usage`, `/admin/stats`, CSV export | low |
+| [#46](https://github.com/an1ndra/path/issues/46) | In-memory rate-limit windows are never evicted | low |
+| [#49](https://github.com/an1ndra/path/issues/49) | Release tags are not verified to be on `main` | medium |
+| [#50](https://github.com/an1ndra/path/issues/50) | `UpstreamClient` allocates an `ObjectMapper` per error | low |
+
+Closed as already delivered: #47 (shared rate limiting, shipped in #20) and #48 (circuit
+breaker, shipped in #11).
 
 ## Delivered
 

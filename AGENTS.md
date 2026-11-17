@@ -158,6 +158,16 @@ a smoke check. Never claim a fix without running both.
   version — Central is immutable. After a `-P release` build the jar in `target/` is the
   plain library, so rebuild before running the smoke suite.
 - CI pins `ubuntu-26.04` (latest LTS) instead of `ubuntu-latest`; bump it deliberately.
+- **The Dockerfile fetches Maven itself, not through `./mvnw`.** The wrapper shells out to
+  curl/unzip, which `eclipse-temurin` does not fully ship; inside the image it downloaded a
+  file that failed its own SHA-256 check and broke every container build. The build stage
+  installs those tools and verifies the pin from
+  `.mvn/wrapper/maven-wrapper.properties` explicitly. Do not "simplify" it back to `./mvnw`
+  without building the image.
+- **`.trivyignore.yaml` must be passed to Trivy explicitly.** The YAML form (the one that
+  supports `expired_at`) is not auto-detected; the release workflow sets `ignorefile`. Every
+  entry carries a `statement` and a deadline, so an accepted CVE fails the gate again on
+  that date instead of living forever.
 - **Every action is pinned to a commit SHA**, with the tag in a trailing comment
   (`actions/checkout@3d3c42e5... # v7.0.1`). A mutable tag can be repointed at any commit,
   which is exactly the supply-chain hole this closes. Bump by merging the Dependabot

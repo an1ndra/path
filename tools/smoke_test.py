@@ -548,10 +548,42 @@ def main():
     check("tokens/count rejects an unknown model",
           status == 404 and unknown["error"]["code"] == "model_not_found", str(status))
 
+    # -------------------------------------------------------------- guardrails
+    _, _, settings = jreq("GET", "/admin/settings", admin=True)
+    guard = settings.get("guardrails", {})
+    check("settings report the active guardrails",
+          "moderation" in guard and "redact_before_send" in guard, str(settings)[:150])
+
+    status, _, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "mail me at alice@example.com"}]}, key=key)
+    check("a prompt containing PII still succeeds", status == 200, str(status))
+
+    if guard.get("moderation"):
+        status, _, flagged = jreq("POST", "/v1/chat/completions", {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "please flag-me"}]}, key=key)
+        check("moderation blocks a flagged prompt",
+              status == 400 and flagged.get("error", {}).get("code") == "content_flagged",
+              str(status) + str(flagged)[:120])
+
+        status, _, _ = jreq("POST", "/v1/chat/completions", {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "a perfectly ordinary request"}]}, key=key)
+        check("moderation lets a clean prompt through", status == 200, str(status))
+    elif settings.get("prompt_logging"):
+        pass
+
     # ------------------------------------------------------------ prompt logs
     status, _, plogs = jreq("GET", "/admin/prompt-logs?limit=5", admin=True)
-    check("prompt log endpoint responds (disabled by default)",
-          status == 200 and isinstance(plogs, list), str(status))
+    check("prompt log endpoint responds", status == 200 and isinstance(plogs, list), str(status))
+
+    if settings.get("prompt_logging") and guard.get("prompt_log_redaction"):
+        # The PII request is not necessarily in the newest five, so read a wider window.
+        _, _, wide = jreq("GET", "/admin/prompt-logs?limit=200", admin=True)
+        bodies = " ".join(str(row.get("request", "")) for row in wide)
+        check("prompt logs carry no email address", "@example.com" not in bodies, bodies[:160])
+        check("prompt logs show the redaction token", "[EMAIL_" in bodies, bodies[:160])
 
     # ------------------------------------------------------------- allowlist
     _, _, allow_key = jreq("POST", "/admin/keys",

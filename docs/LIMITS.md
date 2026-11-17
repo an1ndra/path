@@ -91,6 +91,26 @@
 - **Projects have their own budgets.** A project can carry a lifetime, daily and monthly
   limit; they are checked against the spend of every key in it, and
   `GET /admin/projects/{id}/usage` rolls up today, this month and all time.
+- **Prompt logs are redacted twice.** Credentials first (`sk-`, `gsk_`, bearer tokens),
+  then personal identifiers: emails, phones, card numbers that pass the Luhn checksum,
+  Aadhaar and PAN. Redaction is on by default for logs (`GATEWAY_GUARDRAILS_LOG_REDACTION`)
+  and is a pure function, so the same prompt always redacts the same way. Tokens are
+  numbered per call (`[EMAIL_1]`), which keeps a stored conversation readable.
+- **Redaction before send is off by default.** `GATEWAY_GUARDRAILS_REDACT` makes the
+  provider see redacted text too. It changes what the model can answer, so it is an
+  operator decision, not a default. When on, redaction happens before the request is
+  hashed, stored or replayed, so a retry cannot resurrect the original text.
+- **Moderation is off by default and never silent.** `GATEWAY_GUARDRAILS_MODERATION` adds a
+  pre-flight call to the provider's moderation endpoint (OpenAI-shaped providers only,
+  since it needs a compatible `/moderations`). A flagged request is refused with 400
+  `content_flagged` and the categories; a moderation outage is logged and the request
+  proceeds, because a moderation dependency must not become a gateway outage.
+- **Phone detection is deliberately narrow.** Contiguous digits are only treated as a
+  phone when they look like a mobile number (10-13 digits starting 6-9), so a 10-digit
+  epoch timestamp is not redacted into `[PHONE_1]`. Numbers with separators or a leading
+  `+` are treated as phones; ISO dates and dotted versions are not.
+- **`GET /admin/settings` reports what is active**, so an operator (or the smoke suite)
+  can see whether logging, redaction and moderation are on without reading the env.
 - **Prompt logging is off by default.** When enabled it redacts `sk-`/`gsk_`/`Bearer`
   tokens, caps each body, and purges after the retention window — but it still stores user
   prompts. Treat retention as a compliance decision.

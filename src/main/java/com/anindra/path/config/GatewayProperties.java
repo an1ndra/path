@@ -59,6 +59,7 @@ public class GatewayProperties {
     private Breaker breaker = new Breaker();
     private Idempotency idempotency = new Idempotency();
     private Cache cache = new Cache();
+    private Guardrails guardrails = new Guardrails();
     private Alerts alerts = new Alerts();
     private PromptLogging promptLogging = new PromptLogging();
     private RateLimit rateLimit = new RateLimit();
@@ -108,6 +109,21 @@ public class GatewayProperties {
         private Duration cooldown = Duration.ofHours(1);
         /** Warn when a key has less than this fraction of its credit left. */
         private double budgetThreshold = 0.8;
+    }
+
+    @Getter
+    @Setter
+    public static class Guardrails {
+        /** Redact personal identifiers before a prompt is written to prompt_logs. */
+        private boolean promptLogRedaction = true;
+
+        /** Redact the prompt a provider receives. Off by default: it changes what the model sees. */
+        private boolean redactBeforeSend = false;
+
+        /** Call the provider's moderation endpoint before the completion. */
+        private boolean moderation = false;
+
+        private String moderationModel = "omni-moderation-latest";
     }
 
     @Getter

@@ -22,6 +22,7 @@ public class AdminController {
     private final PromptLogService promptLogs;
     private final TenancyService tenancy;
     private final AliasService aliasService;
+    private final com.anindra.path.config.GatewayProperties props;
 
     // ------------------------------------------------------------- providers
 
@@ -120,6 +121,22 @@ public class AdminController {
         var result = admin.rotateMasterKey(body.get("new_key"));
         audit.record("master-key.rotate", "master-key", null);
         return result;
+    }
+
+    @GetMapping("/settings")
+    public Map<String, Object> settings() {
+        Map<String, Object> guardrails = new java.util.LinkedHashMap<>();
+        guardrails.put("prompt_log_redaction", props.getGuardrails().isPromptLogRedaction());
+        guardrails.put("redact_before_send", props.getGuardrails().isRedactBeforeSend());
+        guardrails.put("moderation", props.getGuardrails().isModeration());
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("prompt_logging", props.getPromptLogging().isEnabled());
+        out.put("guardrails", guardrails);
+        out.put("rate_limit_backend", props.getRateLimit().getBackend());
+        out.put("public_models", props.isPublicModels());
+        out.put("demo_key_bootstrap", props.isBootstrapDemoKey());
+        return out;
     }
 
     // --------------------------------------------------------------- aliases

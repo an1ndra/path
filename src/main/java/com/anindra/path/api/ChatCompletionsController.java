@@ -45,6 +45,8 @@ public class ChatCompletionsController {
     private final com.anindra.path.gateway.EmbeddingsService embeddings;
     private final com.anindra.path.gateway.TokenCountService tokenCount;
     private final com.anindra.path.gateway.CreditGuard creditGuard;
+    private final com.anindra.path.gateway.PromptSanitizer sanitizer;
+    private final com.anindra.path.gateway.ModerationService moderation;
     private final ModelCatalogService catalog;
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
@@ -96,7 +98,13 @@ public class ChatCompletionsController {
 
     private ResponseEntity<?> handle(ObjectNode body, ClientKey key, HttpServletRequest request,
                                      HttpServletResponse response) throws IOException {
+        if (sanitizer.redactBeforeSend()) {
+            // Redact first: the prompt the provider receives is then the prompt we hash,
+            // store and replay, so a retry cannot resurrect the original text.
+            body = sanitizer.redactBody(body);
+        }
         ChatRequestSpec spec = ChatRequestSpec.parse(body);
+        moderation.check(spec, key);
         String idempotencyKey = normalizeIdempotencyKey(request.getHeader(IDEMPOTENCY_HEADER));
         String requestHash = idempotencyKey == null ? null : ApiKeyService.hash(body.toString());
 

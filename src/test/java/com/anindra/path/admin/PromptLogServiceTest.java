@@ -8,7 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PromptLogServiceTest {
 
     private PromptLogService service() {
-        return new PromptLogService(null, new GatewayProperties());
+        GatewayProperties props = new GatewayProperties();
+        return new PromptLogService(null, props,
+                new com.anindra.path.gateway.PromptSanitizer(props));
     }
 
     @Test
@@ -24,6 +26,14 @@ class PromptLogServiceTest {
                 .contains("[redacted]");
         assertThat(PromptLogService.redact("gsk_abcdefghijklmnopqrst"))
                 .isEqualTo("[redacted]");
+    }
+
+    @Test
+    void piiRedactionIsOnForLogsByDefault() {
+        GatewayProperties props = new GatewayProperties();
+        assertThat(props.getGuardrails().isPromptLogRedaction()).isTrue();
+        assertThat(props.getGuardrails().isRedactBeforeSend()).isFalse();
+        assertThat(props.getGuardrails().isModeration()).isFalse();
     }
 
     @Test

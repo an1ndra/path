@@ -67,6 +67,11 @@ gateway:
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
+  guardrails:
+    prompt-log-redaction: ${GATEWAY_GUARDRAILS_LOG_REDACTION:true}
+    redact-before-send: ${GATEWAY_GUARDRAILS_REDACT:false}
+    moderation: ${GATEWAY_GUARDRAILS_MODERATION:false}
+    moderation-model: ${GATEWAY_GUARDRAILS_MODERATION_MODEL:omni-moderation-latest}
   rate-limit:
     backend: ${GATEWAY_RATE_LIMIT_BACKEND:memory}
     prefix: ${GATEWAY_RATE_LIMIT_PREFIX:path}

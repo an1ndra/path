@@ -31,6 +31,7 @@ public class PromptLogService {
 
     private final PromptLogRepository logs;
     private final GatewayProperties props;
+    private final com.anindra.path.gateway.PromptSanitizer sanitizer;
 
     public boolean enabled() {
         return props.getPromptLogging().isEnabled();
@@ -46,8 +47,8 @@ public class PromptLogService {
             entry.setClientKeyId(clientKeyId);
             entry.setRequestId(requestId);
             entry.setPublicModelId(model);
-            entry.setRequestBody(truncate(redact(request), max));
-            entry.setResponseBody(truncate(redact(response), max));
+            entry.setRequestBody(truncate(scrub(request), max));
+            entry.setResponseBody(truncate(scrub(response), max));
             entry.setExpiresAt(Instant.now().plus(props.getPromptLogging().getRetention()));
             logs.save(entry);
         } catch (Exception e) {
@@ -87,6 +88,12 @@ public class PromptLogService {
 
     static String redact(String body) {
         return body == null ? null : SECRET.matcher(body).replaceAll("[redacted]");
+    }
+
+    /** Credentials first, then personal identifiers: a token inside an email is still PII. */
+    private String scrub(String body) {
+        String scrubbed = redact(body);
+        return sanitizer.redactPromptLogs() ? sanitizer.redactText(scrubbed) : scrubbed;
     }
 
     private static String truncate(String body, int maxBytes) {

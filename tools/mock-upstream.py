@@ -105,6 +105,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "bad request from client", "type": "invalid_request"}})
             return
 
+        if self.path.endswith("/moderations"):
+            text = str(body.get("input", ""))
+            flagged = "flag-me" in text
+            self._json(200, {"id": "modr-mock", "model": body.get("model"),
+                             "results": [{"flagged": flagged, "categories": {
+                                 "violence": flagged, "harassment": False,
+                                 "hate": False, "self-harm": False}}]})
+            return
+
         if self.path.endswith("/embeddings"):
             self._json(200, {
                 "object": "list",

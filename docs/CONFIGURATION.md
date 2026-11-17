@@ -50,6 +50,10 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_GUARDRAILS_LOG_REDACTION` | `true` | redact PII before a prompt is written to the prompt log |
+| `GATEWAY_GUARDRAILS_REDACT` | `false` | redact the prompt the provider receives |
+| `GATEWAY_GUARDRAILS_MODERATION` | `false` | pre-flight moderation call (OpenAI-shaped providers) |
+| `GATEWAY_GUARDRAILS_MODERATION_MODEL` | `omni-moderation-latest` | model used for that call |
 | `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts before 429s |
 | `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
 | `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |

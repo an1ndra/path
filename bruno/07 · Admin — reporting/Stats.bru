@@ -1,0 +1,14 @@
+meta {
+  name: Stats
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/admin/stats?window=24h
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

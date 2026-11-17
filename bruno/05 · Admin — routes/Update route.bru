@@ -1,0 +1,23 @@
+meta {
+  name: Update route
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/admin/routes/{{createdRouteId}}
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "priority": 2,
+    "enabled": true
+  }
+}

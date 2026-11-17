@@ -92,6 +92,7 @@ print(client.chat.completions.create(
 | [Security policy](SECURITY.md) | How to report a vulnerability and what CI checks |
 | [AGENTS.md](AGENTS.md) | Contributor conventions and gotchas |
 | [Postman](docs/path.postman_collection.json) | 26 requests over the public and admin surfaces |
+| [Bruno](bruno/README.md) | the same 26 requests as git-friendly `.bru` files |
 
 ## License
 

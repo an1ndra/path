@@ -1,0 +1,36 @@
+meta {
+  name: Chat — streaming
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/chat/completions
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "model": "{{model}}",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count to five."
+      }
+    ]
+  }
+}
+
+docs {
+  Open the Bruno's console to inspect the SSE frames. The response ends with `data: [DONE]`.
+}

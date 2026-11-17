@@ -1,6 +1,8 @@
 # API reference
 
-A machine-readable OpenAPI 3 document is served at `/v3/api-docs` (Swagger UI at
+Ready-made clients: [Bruno](../bruno/README.md) (26 requests, `.bru` files) and the
+[Postman collection](path.postman_collection.json). A machine-readable OpenAPI 3
+document is served at `/v3/api-docs` (Swagger UI at
 `/swagger-ui.html` when `GATEWAY_SWAGGER_UI=true`). Everything below is the same
 contract in prose.
 

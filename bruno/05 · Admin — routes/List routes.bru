@@ -1,0 +1,14 @@
+meta {
+  name: List routes
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/admin/routes?model={{publicModel}}
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

@@ -1,0 +1,14 @@
+meta {
+  name: List providers
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/admin/providers
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

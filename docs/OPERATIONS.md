@@ -97,6 +97,12 @@ digest is written to the workflow summary so it can be pinned.
 
 ## Observability
 
+- **Email alerts.** Set `SPRING_MAIL_*` and `GATEWAY_ALERT_EMAIL_TO` and every alert also
+  arrives by email (`[Path] <event>` with the payload as `key: value` lines). Webhook and
+  email are independent channels: either, both, or neither. Sending is fire-and-forget on a
+  virtual thread, and a mailbox failure only logs a warning.
+- **`POST /admin/alerts/test`** sends a test alert and reports which channels are
+  configured, so "do alerts work?" is answered before you need them.
 - **Provider health** at `/actuator/health/providers`: circuit state and retry-after per
   provider. Overall health stays UP while fallback exists; only a total outage returns
   OUT_OF_SERVICE.

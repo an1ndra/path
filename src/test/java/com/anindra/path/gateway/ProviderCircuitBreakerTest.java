@@ -18,7 +18,10 @@ class ProviderCircuitBreakerTest {
         props.getBreaker().setFailureThreshold(2);
         props.getBreaker().setOpenDuration(Duration.ofMillis(120));
         breaker = new ProviderCircuitBreaker(props,
-                new com.anindra.path.admin.AlertService(props, new com.fasterxml.jackson.databind.ObjectMapper()));
+                new com.anindra.path.admin.AlertService(props,
+                        new com.fasterxml.jackson.databind.ObjectMapper(),
+                        new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                                .getBeanProvider(org.springframework.mail.javamail.JavaMailSender.class)));
     }
 
     @Test

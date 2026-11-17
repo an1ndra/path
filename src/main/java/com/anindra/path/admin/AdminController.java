@@ -22,6 +22,7 @@ public class AdminController {
     private final PromptLogService promptLogs;
     private final TenancyService tenancy;
     private final AliasService aliasService;
+    private final AlertService alerts;
     private final com.anindra.path.config.GatewayProperties props;
     private final com.anindra.path.gateway.SemanticCacheService semantic;
 
@@ -122,6 +123,24 @@ public class AdminController {
         var result = admin.rotateMasterKey(body.get("new_key"));
         audit.record("master-key.rotate", "master-key", null);
         return result;
+    }
+
+    @PostMapping("/alerts/test")
+    public Map<String, Object> testAlert() {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("message", "This is a test alert from Path; if you can read it, alerting works.");
+        payload.put("severity", "info");
+        alerts.notify("alert.test", payload);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("sent", true);
+        out.put("email", alerts.emailEnabled());
+        out.put("webhook", alerts.webhookEnabled());
+        if (!alerts.emailEnabled() && !alerts.webhookEnabled()) {
+            out.put("note", "Neither channel is configured: set GATEWAY_ALERT_EMAIL_TO (+ spring.mail.*) "
+                    + "or GATEWAY_ALERT_WEBHOOK.");
+        }
+        audit.record("alert.test", "alert", null);
+        return out;
     }
 
     @GetMapping("/settings")

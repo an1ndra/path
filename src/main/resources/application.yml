@@ -88,6 +88,8 @@ gateway:
     retention: ${GATEWAY_PROMPT_LOG_RETENTION:7d}
     max-body-bytes: ${GATEWAY_PROMPT_LOG_MAX_BYTES:65536}
   alerts:
+    email-to: ${GATEWAY_ALERT_EMAIL_TO:}
+    email-from: ${GATEWAY_ALERT_EMAIL_FROM:path-gateway@localhost}
     webhook-url: ${GATEWAY_ALERT_WEBHOOK:}
     cooldown: ${GATEWAY_ALERT_COOLDOWN:1h}
     budget-threshold: ${GATEWAY_ALERT_BUDGET_THRESHOLD:0.8}

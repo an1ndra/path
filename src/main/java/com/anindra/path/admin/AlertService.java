@@ -4,6 +4,9 @@ import com.anindra.path.config.GatewayProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -26,6 +29,11 @@ public class AlertService {
 
     private final GatewayProperties props;
     private final ObjectMapper mapper;
+    /**
+     * Only present when spring.mail.host is configured. ObjectProvider keeps the gateway
+     * bootable with email alerting off, which is the default.
+     */
+    private final ObjectProvider<JavaMailSender> mailSender;
     private final HttpClient http = HttpClient.newHttpClient();
     private final Map<String, Long> lastSent = new ConcurrentHashMap<>();
     private final Map<String, Long> sentOnce = new ConcurrentHashMap<>();
@@ -37,7 +45,7 @@ public class AlertService {
      */
     public void notifyOnce(String dedupeKey, String event, Map<String, Object> payload) {
         String url = props.getAlerts().getWebhookUrl();
-        if (url == null || url.isBlank()) {
+        if ((url == null || url.isBlank()) && !emailEnabled()) {
             return;
         }
         if (sentOnce.putIfAbsent(dedupeKey, System.currentTimeMillis()) != null) {
@@ -54,7 +62,8 @@ public class AlertService {
 
     public void notify(String event, Map<String, Object> payload) {
         String url = props.getAlerts().getWebhookUrl();
-        if (url == null || url.isBlank()) {
+        boolean wantsEmail = emailEnabled();
+        if ((url == null || url.isBlank()) && !wantsEmail) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -73,7 +82,58 @@ public class AlertService {
         body.put("at", Instant.now().toString());
         body.putAll(payload);
 
-        Thread.ofVirtual().name("alert-webhook").start(() -> send(url, body));
+        if (url != null && !url.isBlank()) {
+            Thread.ofVirtual().name("alert-webhook").start(() -> send(url, body));
+        }
+        if (wantsEmail) {
+            Thread.ofVirtual().name("alert-email").start(() -> email(body));
+        }
+    }
+
+    /** True when recipients are configured and the mail client exists. */
+    public boolean emailEnabled() {
+        return props.getAlerts().getEmailTo() != null
+                && !props.getAlerts().getEmailTo().isBlank()
+                && mailSender.getIfAvailable() != null;
+    }
+
+    public boolean webhookEnabled() {
+        return props.getAlerts().getWebhookUrl() != null
+                && !props.getAlerts().getWebhookUrl().isBlank();
+    }
+
+    private void email(Map<String, Object> body) {
+        JavaMailSender sender = mailSender.getIfAvailable();
+        if (sender == null) {
+            return;
+        }
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(props.getAlerts().getEmailFrom());
+            message.setTo(props.getAlerts().getEmailTo().split("\\s*,\\s*"));
+            message.setSubject("[Path] " + body.get("event"));
+            message.setText(text(body));
+            sender.send(message);
+        } catch (Exception e) {
+            // An unreachable mailbox must never affect the request that triggered the alert.
+            log.warn("Alert email failed for {}: {}", body.get("event"), e.getMessage());
+        }
+    }
+
+    /** Plain text body: the event, the time, then one {@code key: value} line per field. */
+    static String text(Map<String, Object> body) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Path gateway alert\n\n");
+        sb.append("event: ").append(body.get("event")).append('\n');
+        sb.append("at:    ").append(body.get("at")).append('\n');
+        for (Map.Entry<String, Object> entry : body.entrySet()) {
+            if (entry.getKey().equals("source") || entry.getKey().equals("event")
+                    || entry.getKey().equals("at")) {
+                continue;
+            }
+            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append('\n');
+        }
+        return sb.toString();
     }
 
     private void send(String url, Map<String, Object> body) {

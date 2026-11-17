@@ -116,8 +116,12 @@ public class GatewayProperties {
     @Getter
     @Setter
     public static class Alerts {
-        /** Slack-compatible webhook; blank disables alerting. */
+        /** Slack-compatible webhook; blank disables webhook alerting. */
         private String webhookUrl = "";
+
+        /** Comma-separated recipients. Email alerting also needs spring.mail.host. */
+        private String emailTo = "";
+        private String emailFrom = "path-gateway@localhost";
         private Duration cooldown = Duration.ofHours(1);
         /** Warn when a key has less than this fraction of its credit left. */
         private double budgetThreshold = 0.8;

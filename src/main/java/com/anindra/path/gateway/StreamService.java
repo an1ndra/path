@@ -41,19 +41,22 @@ public class StreamService {
     private final UsageService usage;
     private final CreditGuard creditGuard;
     private final ProviderCircuitBreaker breaker;
+    private final ResponseCacheService cache;
     private final ObjectMapper mapper;
     private final GatewayProperties props;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public StreamService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
                          UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
-                         ObjectMapper mapper, GatewayProperties props, List<ProviderAdapter> adapterList) {
+                         ResponseCacheService cache, ObjectMapper mapper, GatewayProperties props,
+                         List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
         this.creditGuard = creditGuard;
         this.breaker = breaker;
+        this.cache = cache;
         this.mapper = mapper;
         this.props = props;
         adapterList.forEach(a -> adapters.put(a.type(), a));
@@ -74,7 +77,26 @@ public class StreamService {
         response.setHeader("Cache-Control", "no-cache, no-transform");
         response.setHeader("Connection", "keep-alive");
         response.setHeader("X-Accel-Buffering", "no");
-        OutputStream out = response.getOutputStream();
+
+        boolean cacheEligible = ResponseCacheService.eligible(spec, chain.get(0).route());
+        String cacheKey = cacheEligible
+                ? cache.key(key.getId(), spec.publicModel(), spec.body().toString()) : null;
+        if (cacheKey != null) {
+            var hit = cache.lookup(cacheKey);
+            if (hit.isPresent()) {
+                response.setHeader("X-Path-Cache", "hit");
+                OutputStream cached = response.getOutputStream();
+                cached.write(hit.get().body().getBytes(StandardCharsets.UTF_8));
+                cached.flush();
+                usage.recordCacheHit(key, spec, chain.get(0), hit.get(), true);
+                return true;
+            }
+        }
+        response.setHeader("X-Path-Cache", cacheEligible ? "miss" : "off");
+
+        OutputStream raw = response.getOutputStream();
+        Tee tee = cacheEligible ? new Tee(raw, props.getCache().getMaxBodyBytes()) : null;
+        OutputStream out = tee == null ? raw : tee;
         out.write(": open\n\n".getBytes(StandardCharsets.UTF_8));
         out.flush();
 
@@ -184,6 +206,10 @@ public class StreamService {
                         spec.publicModel(), provider.getSlug(), tokens.total(), tokens.cached(),
                         cost.toPlainString(), ttftMs, latency);
                 breaker.onSuccess(providerId);
+                if (tee != null && cacheKey != null && !tee.overflowed()) {
+                    cache.store(cacheKey, key.getId(), spec.publicModel(), provider.getSlug(),
+                            rr.route(), "text/event-stream", tee.body(), tokens, cost);
+                }
                 return true;
 
             } catch (UpstreamException e) {
@@ -266,6 +292,61 @@ public class StreamService {
                 lastError.code(), lastError.getMessage());
         emitError(out, lastError);
         return false;
+    }
+
+    /** Writes through while capturing the SSE payload for the response cache. */
+    private static final class Tee extends OutputStream {
+
+        private final OutputStream delegate;
+        private final StringBuilder captured = new StringBuilder();
+        private final int maxBytes;
+        private boolean overflow;
+
+        private Tee(OutputStream delegate, int maxBytes) {
+            this.delegate = delegate;
+            this.maxBytes = maxBytes;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            delegate.write(b);
+            append(new byte[]{(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.write(b, off, len);
+            append(b, off, len);
+        }
+
+        private void append(byte[] b, int off, int len) {
+            if (overflow) {
+                return;
+            }
+            if (captured.length() + len > maxBytes) {
+                overflow = true;
+                return;
+            }
+            captured.append(new String(b, off, len, StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+
+        private boolean overflowed() {
+            return overflow;
+        }
+
+        private String body() {
+            return captured.toString();
+        }
     }
 
     private void send(OutputStream out, String data) throws IOException {

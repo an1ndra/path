@@ -126,6 +126,29 @@ public class UsageService {
         return cost.totalUsd();
     }
 
+    /** Records a cache hit: no upstream call, no charge, savings carried for reporting. */
+    @Transactional
+    public void recordCacheHit(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute resolved,
+                               ResponseCacheService.Entry entry, boolean streamed) {
+        UsageRecord record = new UsageRecord();
+        record.setClientKeyId(key.getId());
+        record.setClientKeyName(key.getName());
+        record.setPublicModelId(spec.publicModel());
+        record.setProviderSlug(entry.providerSlug());
+        record.setUpstreamModelId(resolved.route().getUpstreamModelId());
+        record.setPromptTokens(entry.promptTokens());
+        record.setCompletionTokens(entry.completionTokens());
+        record.setTotalTokens(entry.totalTokens());
+        record.setCostUsd(BigDecimal.ZERO);
+        record.setCachedSavingsUsd(entry.costUsd() == null ? BigDecimal.ZERO : entry.costUsd());
+        record.setLatencyMs(0);
+        record.setStreamed(streamed);
+        record.setAttempts(0);
+        record.setFinishReason("cache");
+        record.setStatus(UsageRecord.Status.SUCCESS);
+        usage.save(record);
+    }
+
     @Transactional
     public void recordError(ClientKey key, ChatRequestSpec spec, String providerSlug, String upstreamModel,
                             long latencyMs, boolean streamed, int attempts, String code, String message) {

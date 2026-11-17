@@ -48,6 +48,8 @@ public class AdminService {
                              @JsonAlias("cachedInputPricePerMillion") BigDecimal cachedInputPricePerMillion,
                              @JsonAlias("cacheWritePricePerMillion") BigDecimal cacheWritePricePerMillion,
                              Integer priority,
+                             @JsonAlias("cacheEnabled") Boolean cacheEnabled,
+                             @JsonAlias("cacheTtlSeconds") Integer cacheTtlSeconds,
                              @JsonAlias("contextLength") Integer contextLength,
                              @JsonAlias("supportsStreaming") Boolean supportsStreaming,
                              @JsonAlias("supportsTools") Boolean supportsTools,
@@ -254,6 +256,12 @@ public class AdminService {
         if (in.priority() != null) {
             route.setPriority(in.priority());
         }
+        if (in.cacheEnabled() != null) {
+            route.setCacheEnabled(in.cacheEnabled());
+        }
+        if (in.cacheTtlSeconds() != null) {
+            route.setCacheTtlSeconds(in.cacheTtlSeconds());
+        }
         if (in.contextLength() != null) {
             route.setContextLength(in.contextLength());
         }
@@ -295,6 +303,8 @@ public class AdminService {
         view.put("supports_streaming", r.isSupportsStreaming());
         view.put("supports_tools", r.isSupportsTools());
         view.put("enabled", r.isEnabled());
+        view.put("cache_enabled", r.isCacheEnabled());
+        view.put("cache_ttl_seconds", r.getCacheTtlSeconds());
         view.put("description", r.getDescription());
         return view;
     }

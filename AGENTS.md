@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (40)
+# unit + integration tests (48)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (74 checks, no real keys)
+# full end-to-end suite against a mock upstream (82 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -48,6 +48,7 @@ com.anindra.path
 │   ├── ProviderCircuitBreaker    per-provider OPEN/HALF_OPEN/CLOSED, Retry-After
 │   ├── IdempotencyService        Idempotency-Key claims and replay
 │   ├── ConcurrencyLimiter        per-key in-flight permits
+│   ├── ResponseCacheService      exact-match replay, opt-in per route
 │   ├── RouteResolver             public model id → ordered chain
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
@@ -113,7 +114,8 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 - `IdempotencyServiceTest` — replay, conflicts, concurrent claims, key scoping.
 - `ConcurrencyLimiterTest` — per-key permits, no over-release.
 - `TokenEstimateTest` — real tokenization with a heuristic fallback.
-- `tools/smoke_test.py` — 74 checks against `tools/mock-upstream.py`. The mock can
+- `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
+- `tools/smoke_test.py` — 82 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -148,6 +150,10 @@ a smoke check. Never claim a fix without running both.
   `unsupported_parameter` (`seed`, `logit_bias`, penalties, `logprobs`, `n > 1`,
   non-text `response_format`). Do not "fix" a failing call by dropping the field; the
   divergence is what the 422 exists to prevent. `user` maps to `metadata.user_id`.
+- **The response cache only serves explicit `temperature: 0`, tool-free requests on a
+  route with `cache_enabled`.** Entries are keyed per client key so tenants cannot read
+  each other's completions. Do not relax the temperature rule: a cached sample at
+  temperature 1 is a correctness bug.
 - **Token estimates use jtokkit** when the upstream model has a known encoding, and fall
   back to `chars / 4`. The estimate only pre-authorises spend; billing always uses the
   provider-reported usage.

@@ -212,6 +212,46 @@ def main():
     _, _, p5 = sse_post("/v1/chat/completions", stream_idem, key, headers={"Idempotency-Key": "smoke-idem-s"})
     check("streamed replay is identical", p4 == p5 and len(p4) > 1, f"{len(p4)}/{len(p5)}")
 
+    # ------------------------------------------------------------ response cache
+    _, _, route_list = jreq("GET", "/admin/routes?model=gpt-4o-mini", admin=True)
+    target = next((r for r in route_list if r["provider"] == "openai"), None)
+    check("found the route to cache", target is not None)
+    if target:
+        jreq("PATCH", f"/admin/routes/{target['id']}",
+             {"cache_enabled": True, "cache_ttl_seconds": 60}, admin=True)
+
+    cached_body = {"model": "gpt-4o-mini", "temperature": 0,
+                   "messages": [{"role": "user", "content": "cached prompt"}]}
+    _, ch1, cb1 = jreq("POST", "/v1/chat/completions", cached_body, key=key)
+    _, ch2, cb2 = jreq("POST", "/v1/chat/completions", cached_body, key=key)
+    check("cache miss then hit",
+          ch1.get("X-Path-Cache") == "miss" and ch2.get("X-Path-Cache") == "hit",
+          f"{ch1.get('X-Path-Cache')}/{ch2.get('X-Path-Cache')}")
+    check("cached body is identical", cb1 == cb2)
+    check("cache hit costs nothing", float(ch2.get("X-Gateway-Cost-Usd", "1")) == 0.0,
+          str(ch2.get("X-Gateway-Cost-Usd")))
+
+    _, warm_h, _ = jreq("POST", "/v1/chat/completions",
+                        {**cached_body, "temperature": 1}, key=key)
+    check("non-zero temperature bypasses the cache", warm_h.get("X-Path-Cache") == "off",
+          str(warm_h.get("X-Path-Cache")))
+
+    stream_cached = {"model": "gpt-4o-mini", "temperature": 0, "stream": True,
+                     "messages": [{"role": "user", "content": "cached stream"}]}
+    _, sh1, sp1 = sse_post("/v1/chat/completions", stream_cached, key)
+    _, sh2, sp2 = sse_post("/v1/chat/completions", stream_cached, key)
+    check("stream cache miss then hit",
+          sh1.get("X-Path-Cache") == "miss" and sh2.get("X-Path-Cache") == "hit",
+          f"{sh1.get('X-Path-Cache')}/{sh2.get('X-Path-Cache')}")
+    check("stream cache replays identical chunks", sp1 == sp2 and len(sp1) > 1,
+          f"{len(sp1)}/{len(sp2)}")
+
+    _, _, recent = jreq("GET", "/admin/usage?window=1h&limit=25", admin=True)
+    cache_rows = [r for r in recent.get("data", []) if r.get("finish_reason") == "cache"]
+    check("cache hits are metered at zero cost",
+          bool(cache_rows) and all(float(r["cost_usd"]) == 0 for r in cache_rows),
+          str(len(cache_rows)))
+
     # -------------------------------------------------------- fallback by chain
     for payload, label in [
         ({"publicModelId": "fallback-test", "providerId": providers["openai"]["id"],

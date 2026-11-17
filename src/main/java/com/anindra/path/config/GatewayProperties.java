@@ -49,6 +49,7 @@ public class GatewayProperties {
 
     private Breaker breaker = new Breaker();
     private Idempotency idempotency = new Idempotency();
+    private Cache cache = new Cache();
 
     @Getter
     @Setter
@@ -59,6 +60,13 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class Cache {
+        /** Responses larger than this are not cached. */
+        private int maxBodyBytes = 2_097_152;
     }
 
     @Getter

@@ -23,7 +23,7 @@ import java.util.Map;
 public class ChatService {
 
     public record Result(JsonNode body, String providerSlug, String upstreamModel,
-                         BigDecimal costUsd, long latencyMs) {
+                         BigDecimal costUsd, long latencyMs, String cacheState) {
     }
 
     private final RouteResolver resolver;
@@ -32,13 +32,14 @@ public class ChatService {
     private final UsageService usage;
     private final CreditGuard creditGuard;
     private final ProviderCircuitBreaker breaker;
+    private final ResponseCacheService cache;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
                        UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
-                       GatewayProperties props, ObjectMapper mapper,
+                       ResponseCacheService cache, GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
@@ -46,6 +47,7 @@ public class ChatService {
         this.usage = usage;
         this.creditGuard = creditGuard;
         this.breaker = breaker;
+        this.cache = cache;
         this.props = props;
         this.mapper = mapper;
         adapterList.forEach(a -> adapters.put(a.type(), a));
@@ -60,6 +62,24 @@ public class ChatService {
         long started = System.nanoTime();
         int attempts = 0;
         String fallbackFrom = null;
+
+        boolean cacheEligible = ResponseCacheService.eligible(spec, chain.get(0).route());
+        String cacheKey = cacheEligible
+                ? cache.key(key.getId(), spec.publicModel(), spec.body().toString()) : null;
+        if (cacheKey != null) {
+            var hit = cache.lookup(cacheKey);
+            if (hit.isPresent()) {
+                ResponseCacheService.Entry entry = hit.get();
+                usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                try {
+                    return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
+                            chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,
+                            elapsedMs(started), "hit");
+                } catch (IOException e) {
+                    log.warn("Cached body for {} is unreadable; falling through", spec.publicModel());
+                }
+            }
+        }
 
         long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
         int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
@@ -132,7 +152,12 @@ public class ChatService {
                 BigDecimal cost = usage.recordSuccess(key, spec, rr, tokens,
                         UsageService.CallMeta.nonStream(latency, requestId, finishReason, attempts, fallbackFrom));
                 breaker.onSuccess(providerId);
-                return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost, latency);
+                if (cacheKey != null) {
+                    cache.store(cacheKey, key.getId(), spec.publicModel(), rr.providerSlug(),
+                            rr.route(), "application/json", normalized.toString(), tokens, cost);
+                }
+                return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost,
+                        latency, cacheKey == null ? "off" : "miss");
 
             } catch (IOException e) {
                 breaker.onFailure(providerId);

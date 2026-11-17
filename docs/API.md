@@ -97,6 +97,21 @@ Response headers:
 | `X-Gateway-Cost-Usd` | `0.00000548` | 8-decimal itemised total |
 | `X-Gateway-Latency-Ms` | `412` | end-to-end |
 | `X-Idempotent-Replay` | `true` | present only when replaying a stored response |
+| `X-Path-Cache` | `hit` / `miss` / `off` | response cache outcome for this call |
+
+**Response cache**
+
+Opt-in per route (`cache_enabled`, `cache_ttl_seconds`). A request qualifies when it
+sets `temperature: 0` explicitly and uses no tools. A hit replays the stored body
+(streams replay as the same SSE sequence), costs nothing, and counts as savings in
+`/v1/usage`. Cache keys are scoped to the client key.
+
+```bash
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-4o-mini","temperature":0,"messages":[{"role":"user","content":"Hi"}]}' \
+  -D - | grep -i x-path-cache
+```
 
 **Idempotency**
 

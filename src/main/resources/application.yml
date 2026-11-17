@@ -60,6 +60,8 @@ gateway:
     failure-threshold: ${GATEWAY_BREAKER_FAILURES:5}
     open-duration: ${GATEWAY_BREAKER_OPEN:30s}
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
+  cache:
+    max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
   idempotency:
     ttl: ${GATEWAY_IDEMPOTENCY_TTL:24h}
     max-response-bytes: ${GATEWAY_IDEMPOTENCY_MAX_BYTES:2097152}

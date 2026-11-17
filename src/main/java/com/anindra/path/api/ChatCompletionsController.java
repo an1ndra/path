@@ -107,6 +107,7 @@ public class ChatCompletionsController {
                 .header("X-Gateway-Upstream-Model", result.upstreamModel())
                 .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
                 .header("X-Gateway-Latency-Ms", String.valueOf(result.latencyMs()))
+                .header("X-Path-Cache", result.cacheState())
                 .body(result.body());
     }
 

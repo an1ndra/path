@@ -63,6 +63,13 @@ public class ModelRoute {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Opt-in: replay identical deterministic requests from the response cache. */
+    @Column(nullable = false)
+    private boolean cacheEnabled = false;
+
+    @Column(nullable = false)
+    private int cacheTtlSeconds = 3600;
+
     @Column(length = 512)
     private String description;
 

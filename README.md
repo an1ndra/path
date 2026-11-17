@@ -255,6 +255,7 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
 | `GATEWAY_IDEMPOTENCY_TTL` | `24h` | how long a completed response stays replayable |
 | `GATEWAY_IDEMPOTENCY_MAX_BYTES` | `2097152` | responses larger than this are not stored for replay |
+| `GATEWAY_CACHE_MAX_BYTES` | `2097152` | responses larger than this are not cached |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` | — | upstream credentials |
 | `GATEWAY_UPSTREAM_<SLUG>_KEY` | — | credential for any other provider slug |
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | H2 file | database |
@@ -312,6 +313,11 @@ python3 tools/smoke_test.py        # 49 checks
   `idempotency_in_progress`. Completed responses are kept for
   `GATEWAY_IDEMPOTENCY_TTL`. A response larger than
   `GATEWAY_IDEMPOTENCY_MAX_BYTES` is not stored, so a retry calls the provider again.
+- **Response cache is opt-in per route and exact-match.** Set `cache_enabled` on a
+  route and a request with an explicit `temperature: 0`, no tools and an identical body
+  replays the stored response — streams included — with `X-Path-Cache: hit`, billed at
+  zero and reported as savings. Entries last `cache_ttl_seconds` (default 3600) and are
+  scoped to the client key, so tenants cannot read each other's completions.
 - **Limits are enforced before the call.** A key may have at most
   `max_concurrent_requests` in flight (default 8, per key), and bodies above
   `max-request-bytes` are rejected with 413 before Jackson reads them.

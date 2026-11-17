@@ -121,7 +121,8 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 | `docs/OPERATIONS.md` | admin API, metrics, migrations, alerts |
 | `docs/LIMITS.md` | design notes and known gaps |
 | `docs/TESTING.md` | test suites and the mock upstream |
-| `docs/ROADMAP.md` | delivered work and the open stories (#20, #33, #37) |
+| `docs/ROADMAP.md` | delivered work and the open stories |
+| `changelog/` | one release-notes file per tag, published as the release body |
 
 Keep README short: a feature can be one bullet there and a section in the matching doc.
 
@@ -151,10 +152,10 @@ a smoke check. Never claim a fix without running both.
 - `Develop` is the default branch; direct pushes are allowed.
 - `main` is release-only: PR required, `Build and unit tests` + `End-to-end smoke test`
   must pass, no bypassing (admins included), no force-push, no deletion.
-- Release: move `CHANGELOG.md` entries from `Unreleased` into a `## [x.y.z] - date`
-  section, commit, then push a `v*.*.*` tag → jar + SBOM + checksums + multi-arch
-  `ghcr.io/an1ndra/path`. The workflow uses that changelog section as the release body
-  and fails the release if the section is missing or empty.
+- Release: copy `changelog/unreleased.md` to `changelog/vX.Y.Z.md`, commit, then push a
+  `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow
+  publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is
+  missing or empty (`tools/changelog.py`).
 
 ## Gotchas
 

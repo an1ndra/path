@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
-"""Print the changelog section for a version, for use as a GitHub release body.
+"""Print the release notes for a tag, for use as a GitHub release body.
 
-    python3 tools/changelog.py 0.1.0     > release-notes.md
-    python3 tools/changelog.py v0.1.0    # leading v is accepted
+    python3 tools/changelog.py v0.1.0     > release-notes.md
+    python3 tools/changelog.py 0.1.0      # the v prefix is optional
 
-Exits non-zero when the version has no section, so a release fails instead of
-publishing an empty body.
+Reads `changelog/<tag>.md`. Exits non-zero when the file is missing or empty, so a tag
+without notes fails the release instead of publishing a blank body.
 """
-import re
 import sys
 from pathlib import Path
 
-CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+ROOT = Path(__file__).resolve().parent.parent
+CHANGELOG_DIR = ROOT / "changelog"
 
 
-def section(version: str) -> str:
-    text = CHANGELOG.read_text(encoding="utf-8")
-    pattern = re.compile(
-        rf"^##\s*\[{re.escape(version)}\][^\n]*\n(.*?)(?=^##\s*\[|\Z)",
-        re.MULTILINE | re.DOTALL,
-    )
-    match = pattern.search(text)
-    return match.group(1).strip() if match else ""
+def find(version: str) -> Path | None:
+    candidates = [f"{version}.md"]
+    if version.startswith("v"):
+        candidates.append(f"{version[1:]}.md")
+    else:
+        candidates.append(f"v{version}.md")
+    for name in candidates:
+        path = CHANGELOG_DIR / name
+        if path.exists():
+            return path
+    return None
 
 
 def main() -> int:
@@ -29,23 +32,21 @@ def main() -> int:
         print("usage: changelog.py <version>", file=sys.stderr)
         return 2
 
-    raw = sys.argv[1].strip()
-    version = raw[1:] if raw.startswith("v") else raw
-
-    body = section(version)
-    if not body:
+    version = sys.argv[1].strip()
+    path = find(version)
+    if path is None:
         print(
-            f"No changelog section found for '{version}'. Add one to CHANGELOG.md "
-            f"before tagging.",
+            f"No changelog file for '{version}'. Add changelog/{version}.md before tagging "
+            f"(see changelog/README.md).",
             file=sys.stderr,
         )
         return 1
 
-    if body.strip() in {"", "Nothing yet."}:
-        print(f"The changelog section for '{version}' is empty.", file=sys.stderr)
+    body = path.read_text(encoding="utf-8").strip()
+    if not body or body.endswith("Nothing yet.") or "Nothing yet." in body:
+        print(f"changelog/{path.name} has no real entries yet.", file=sys.stderr)
         return 1
 
-    print(f"## {raw}\n")
     print(body)
     return 0
 

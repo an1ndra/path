@@ -123,13 +123,16 @@ orchestrator's termination grace period.
 
 ## Release checklist
 
-1. Move the `Unreleased` entries in `CHANGELOG.md` into `## [x.y.z] - YYYY-MM-DD`.
-2. Bump the version in `pom.xml` if it changed.
-3. Commit on `Develop`, then open a PR into `main` (all security gates must pass).
-4. Tag on `main`: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
-5. The release workflow extracts that changelog section as the release body, scans the
-   image, and publishes the jar, SBOM and `checksums.txt`. A missing section fails the
-   release before anything is published.
+1. Copy `changelog/unreleased.md` to `changelog/vX.Y.Z.md` and rewrite it for the release.
+2. Reset `changelog/unreleased.md` to the empty template.
+3. Bump the version in `pom.xml` if it changed.
+4. Commit on `Develop`, then open a PR into `main` (all security gates must pass).
+5. Tag on `main`: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+6. The release workflow publishes `changelog/<tag>.md` verbatim as the release body,
+   scans the image, and attaches the jar, SBOM and `checksums.txt`. A missing or empty
+   file fails the release before anything is published.
+
+Preview the notes locally with `python3 tools/changelog.py vX.Y.Z`.
 
 ## Alerts
 

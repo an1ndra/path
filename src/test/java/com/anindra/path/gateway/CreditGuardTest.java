@@ -29,7 +29,7 @@ class CreditGuardTest {
             mock(com.anindra.path.repo.ProjectRepository.class);
     private final EndUserBudget endUserBudget = mock(EndUserBudget.class);
     private final CreditGuard guard = new CreditGuard(apiKeys, endUserBudget, usage, props,
-            new com.anindra.path.admin.AlertService(props, new ObjectMapper(), new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(org.springframework.mail.javamail.JavaMailSender.class)), projects);
+            new com.anindra.path.admin.AlertService(props, new ObjectMapper(), org.mockito.Mockito.mock(com.anindra.path.admin.MailSettingsService.class)), projects);
     private final ObjectMapper mapper = new ObjectMapper();
 
     @org.junit.jupiter.api.BeforeEach

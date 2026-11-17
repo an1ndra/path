@@ -18,7 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
                 : props.getCorsOrigins().split("\\s*,\\s*");
         registry.addMapping("/**")
                 .allowedOriginPatterns(origins)
-                .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("X-Gateway-Provider", "X-Gateway-Upstream-Model",
                         "X-Gateway-Cost-Usd", "X-Gateway-Latency-Ms", "Retry-After")

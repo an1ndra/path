@@ -20,8 +20,7 @@ class ProviderCircuitBreakerTest {
         breaker = new ProviderCircuitBreaker(props,
                 new com.anindra.path.admin.AlertService(props,
                         new com.fasterxml.jackson.databind.ObjectMapper(),
-                        new org.springframework.beans.factory.support.StaticListableBeanFactory()
-                                .getBeanProvider(org.springframework.mail.javamail.JavaMailSender.class)));
+                        org.mockito.Mockito.mock(com.anindra.path.admin.MailSettingsService.class)));
     }
 
     @Test

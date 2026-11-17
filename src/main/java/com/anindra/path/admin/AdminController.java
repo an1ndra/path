@@ -23,6 +23,7 @@ public class AdminController {
     private final TenancyService tenancy;
     private final AliasService aliasService;
     private final AlertService alerts;
+    private final MailSettingsService mailSettingsService;
     private final com.anindra.path.config.GatewayProperties props;
     private final com.anindra.path.gateway.SemanticCacheService semantic;
 
@@ -123,6 +124,27 @@ public class AdminController {
         var result = admin.rotateMasterKey(body.get("new_key"));
         audit.record("master-key.rotate", "master-key", null);
         return result;
+    }
+
+    public record MailSettingsInput(String host, Integer port, String username, String password,
+                                    String from, String to, Boolean enabled) {
+    }
+
+    @GetMapping("/mail-settings")
+    public Map<String, Object> mailSettings() {
+        return mailSettingsService.view();
+    }
+
+    @PutMapping("/mail-settings")
+    public Map<String, Object> updateMailSettings(@RequestBody MailSettingsInput input) {
+        var updated = mailSettingsService.save(input.host(), input.port(), input.username(),
+                input.password(), input.from(), input.to(), input.enabled());
+        // The password is write-only, so the audit payload carries the other fields only.
+        audit.record("mail-settings.update", "mail-settings", java.util.Map.of(
+                "host", String.valueOf(updated.get("host")),
+                "to", String.valueOf(updated.get("to")),
+                "enabled", String.valueOf(updated.get("configured"))));
+        return updated;
     }
 
     @PostMapping("/alerts/test")

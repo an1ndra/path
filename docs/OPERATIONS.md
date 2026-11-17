@@ -101,6 +101,11 @@ digest is written to the workflow summary so it can be pinned.
   arrives by email (`[Path] <event>` with the payload as `key: value` lines). Webhook and
   email are independent channels: either, both, or neither. Sending is fire-and-forget on a
   virtual thread, and a mailbox failure only logs a warning.
+- **Mail settings are editable from the console** (`GET/PUT /admin/mail-settings`): host,
+  port, username, password, from and recipients. They win over `SPRING_MAIL_*`, which stays
+  as the config-file route; `source` in the response says which is in force. The password is
+  AES-GCM encrypted, only ever written, and `-` clears it. `POST /admin/alerts/test` sends
+  the test through whatever is configured.
 - **`POST /admin/alerts/test`** sends a test alert and reports which channels are
   configured, so "do alerts work?" is answered before you need them.
 - **Provider health** at `/actuator/health/providers`: circuit state and retry-after per

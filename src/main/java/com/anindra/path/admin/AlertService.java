@@ -4,7 +4,6 @@ import com.anindra.path.config.GatewayProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -29,11 +28,8 @@ public class AlertService {
 
     private final GatewayProperties props;
     private final ObjectMapper mapper;
-    /**
-     * Only present when spring.mail.host is configured. ObjectProvider keeps the gateway
-     * bootable with email alerting off, which is the default.
-     */
-    private final ObjectProvider<JavaMailSender> mailSender;
+    /** Console-configured (DB) mail settings, falling back to SPRING_MAIL_*. */
+    private final MailSettingsService mailSettings;
     private final HttpClient http = HttpClient.newHttpClient();
     private final Map<String, Long> lastSent = new ConcurrentHashMap<>();
     private final Map<String, Long> sentOnce = new ConcurrentHashMap<>();
@@ -90,11 +86,9 @@ public class AlertService {
         }
     }
 
-    /** True when recipients are configured and the mail client exists. */
+    /** True when recipients are configured and a sender can be built. */
     public boolean emailEnabled() {
-        return props.getAlerts().getEmailTo() != null
-                && !props.getAlerts().getEmailTo().isBlank()
-                && mailSender.getIfAvailable() != null;
+        return mailSettings.emailEnabled();
     }
 
     public boolean webhookEnabled() {
@@ -103,14 +97,14 @@ public class AlertService {
     }
 
     private void email(Map<String, Object> body) {
-        JavaMailSender sender = mailSender.getIfAvailable();
+        JavaMailSender sender = mailSettings.sender().orElse(null);
         if (sender == null) {
             return;
         }
         try {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(props.getAlerts().getEmailFrom());
-            message.setTo(props.getAlerts().getEmailTo().split("\\s*,\\s*"));
+            message.setFrom(mailSettings.fromAddress());
+            message.setTo(mailSettings.recipients().split("\\s*,\\s*"));
             message.setSubject("[Path] " + body.get("event"));
             message.setText(text(body));
             sender.send(message);

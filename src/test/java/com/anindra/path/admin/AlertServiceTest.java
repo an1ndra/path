@@ -31,7 +31,7 @@ class AlertServiceTest {
         server.start();
         props.getAlerts().setWebhookUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/hook");
         props.getAlerts().setCooldown(java.time.Duration.ZERO);
-        alerts = new AlertService(props, new ObjectMapper(), new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(org.springframework.mail.javamail.JavaMailSender.class));
+        alerts = new AlertService(props, new ObjectMapper(), org.mockito.Mockito.mock(com.anindra.path.admin.MailSettingsService.class));
     }
 
     @AfterEach

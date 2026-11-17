@@ -35,6 +35,7 @@ Every pull request runs:
 | New dependency review (fails on high severity) | `actions/dependency-review-action` |
 | Static analysis for Java | CodeQL |
 | Secrets and misconfiguration in the tree | Trivy |
+| Repointed action tags (every `uses:` is pinned to a commit SHA) | Dependabot + review |
 | Admin auth brute force (10 failures / 5 min per address) | built-in limiter |
 | Unit, integration and end-to-end tests | Maven + the smoke suite |
 

@@ -158,6 +158,10 @@ a smoke check. Never claim a fix without running both.
   version — Central is immutable. After a `-P release` build the jar in `target/` is the
   plain library, so rebuild before running the smoke suite.
 - CI pins `ubuntu-26.04` (latest LTS) instead of `ubuntu-latest`; bump it deliberately.
+- **Every action is pinned to a commit SHA**, with the tag in a trailing comment
+  (`actions/checkout@3d3c42e5... # v7.0.1`). A mutable tag can be repointed at any commit,
+  which is exactly the supply-chain hole this closes. Bump by merging the Dependabot
+  `github-actions` PR, or `pinact run` locally; never replace a SHA with `@vN` again.
 - Release: copy `changelog/unreleased.md` to `changelog/vX.Y.Z.md`, commit, then push a
   `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow
   publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is

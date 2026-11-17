@@ -128,6 +128,11 @@ management:
   health:
     redis:
       enabled: false
+    # SMTP is configured from the console (Settings -> alert email), not from Spring
+    # properties, so the stock mail indicator would probe an empty host and report DOWN,
+    # marking the container unhealthy for a channel that is optional.
+    mail:
+      enabled: false
   tracing:
     sampling:
       probability: ${GATEWAY_TRACE_SAMPLE:0}

@@ -34,6 +34,7 @@ public class DataSeeder implements ApplicationRunner {
     private final ApiKeyService apiKeys;
     private final GatewayProperties props;
     private final SeedState seedState;
+    private final com.anindra.path.repo.ProjectRepository projectsRepository;
 
     @Override
     @Transactional
@@ -42,6 +43,9 @@ public class DataSeeder implements ApplicationRunner {
         Map<String, Provider> bySlug = ensureProviders();
         if (fresh && routes.count() == 0) {
             seedRoutes(bySlug);
+        }
+        if (projectsRepository.count() == 0) {
+            projectsRepository.save(new com.anindra.path.domain.Project("default", "Default project"));
         }
         if (props.isBootstrapDemoKey() && clientKeys.count() == 0) {
             var created = apiKeys.create("demo-local", null, props.getDefaultRpmLimit());

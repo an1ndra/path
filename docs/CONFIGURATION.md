@@ -52,6 +52,19 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_PROMPT_LOG_RETENTION` | `7d` | how long prompt logs are kept |
 | `GATEWAY_PROMPT_LOG_MAX_BYTES` | `65536` | per-body cap for prompt logs |
 
+## Rate limiting
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GATEWAY_RATE_LIMIT_BACKEND` | `memory` | `memory` (one node) or `valkey` (shared) |
+| `GATEWAY_RATE_LIMIT_PREFIX` | `path` | key prefix for Valkey counters |
+| `SPRING_DATA_REDIS_HOST` / `_PORT` | `localhost` / `6379` | Valkey endpoint |
+
+Valkey speaks the Redis protocol, so the Spring Data Redis client works unchanged.
+Point it at a Valkey instance and set `GATEWAY_RATE_LIMIT_BACKEND=valkey` to make the RPM
+limit exact across instances. Budget reservations are enforced in the database either
+way, so they are correct in a cluster regardless of this setting.
+
 ## Provider credentials
 
 | Variable | Meaning |

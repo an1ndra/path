@@ -52,11 +52,20 @@ public class ClientKey {
     @Column(nullable = false, precision = 18, scale = 6)
     private BigDecimal usedUsd = BigDecimal.ZERO;
 
+    /** Pre-authorised worst-case spend for in-flight requests. */
+    @Column(nullable = false, precision = 18, scale = 6)
+    private BigDecimal reservedUsd = BigDecimal.ZERO;
+
+    private Instant reservedUpdatedAt;
+
     @Column(nullable = false)
     private int rpmLimit = 120;
 
     /** Null means use the gateway default. */
     private Integer maxConcurrentRequests;
+
+    /** Owning project; null means unassigned. */
+    private Long projectId;
 
     /** Comma-separated model ids or globs (`gpt-*`); blank means every model. */
     @Column(length = 1024)

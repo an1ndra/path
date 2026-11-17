@@ -34,6 +34,9 @@ class GatewayApiTest {
     @Autowired
     private ClientKeyRepository clientKeys;
 
+    @Autowired
+    private com.anindra.path.admin.TenancyService tenancy;
+
     private String key;
 
     @BeforeEach
@@ -124,6 +127,27 @@ class GatewayApiTest {
                 .andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
                         .header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void readOnlyAdminTokensCannotMutate() throws Exception {
+        String readOnly = tenancy.createToken("read-only-test", "read").plaintext();
+
+        mvc.perform(get("/admin/providers").header("X-Admin-Token", readOnly))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/admin/keys")
+                        .header("X-Admin-Token", readOnly)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"nope\"}"))
+                .andExpect(status().isForbidden());
+
+        String full = tenancy.createToken("full-test", "write").plaintext();
+        mvc.perform(post("/admin/keys")
+                        .header("X-Admin-Token", full)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"allowed\"}"))
+                .andExpect(status().isOk());
     }
 
     @Test

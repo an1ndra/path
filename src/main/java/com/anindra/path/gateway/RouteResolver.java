@@ -87,6 +87,12 @@ public class RouteResolver {
         if (group.size() < 2 || keyId == null) {
             return group;
         }
+        // Weighting is opt-in: a chain of default-weight routes keeps priority order,
+        // otherwise fallback would become a lottery.
+        boolean configured = group.stream().anyMatch(r -> r.route().getWeight() != 100);
+        if (!configured) {
+            return group;
+        }
         int total = group.stream().mapToInt(r -> Math.max(0, r.route().getWeight())).sum();
         if (total <= 0) {
             return group;

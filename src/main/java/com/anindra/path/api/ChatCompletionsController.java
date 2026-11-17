@@ -141,37 +141,42 @@ public class ChatCompletionsController {
                                                String requestHash, HttpServletResponse response)
             throws IOException {
 
-        List<RouteResolver.ResolvedRoute> chain;
+        StreamService.Prepared prepared;
         try {
-            chain = streamService.prepare(spec, key);
+            prepared = streamService.prepare(spec, key);
         } catch (RuntimeException e) {
             abandon(idempotencyKey, key);
             throw e;
         }
 
-        if (idempotencyKey == null) {
-            streamService.stream(response, spec, key, chain);
+        try {
+            List<RouteResolver.ResolvedRoute> chain = prepared.chain();
+            if (idempotencyKey == null) {
+                streamService.stream(response, spec, key, chain);
+                return null;
+            }
+
+            CapturingResponseWrapper capture =
+                    new CapturingResponseWrapper(response, props.getIdempotency().getMaxResponseBytes());
+            boolean completed;
+            try {
+                completed = streamService.stream(capture, spec, key, chain);
+            } catch (RuntimeException e) {
+                abandon(idempotencyKey, key);
+                throw e;
+            }
+
+            if (completed && !capture.overflowed()) {
+                idempotency.complete(key.getId(), idempotencyKey, 200,
+                        "text/event-stream", capture.body());
+            } else {
+                // Not replayable: release the claim so a retry can run.
+                abandon(idempotencyKey, key);
+            }
             return null;
+        } finally {
+            apiKeys.release(key.getId(), prepared.reserved());
         }
-
-        CapturingResponseWrapper capture =
-                new CapturingResponseWrapper(response, props.getIdempotency().getMaxResponseBytes());
-        boolean completed;
-        try {
-            completed = streamService.stream(capture, spec, key, chain);
-        } catch (RuntimeException e) {
-            abandon(idempotencyKey, key);
-            throw e;
-        }
-
-        if (completed && !capture.overflowed()) {
-            idempotency.complete(key.getId(), idempotencyKey, 200,
-                    "text/event-stream", capture.body());
-        } else {
-            // Not replayable: release the claim so a retry can run.
-            abandon(idempotencyKey, key);
-        }
-        return null;
     }
 
     private void abandon(String idempotencyKey, ClientKey key) {

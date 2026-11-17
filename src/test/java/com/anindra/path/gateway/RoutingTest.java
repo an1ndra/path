@@ -28,6 +28,9 @@ class RoutingTest {
     @Autowired
     private ModelAliasService aliases;
 
+    @Autowired
+    private com.anindra.path.repo.ModelRouteRepository routes;
+
     private ChatRequestSpec spec(String model) throws Exception {
         return ChatRequestSpec.parse((ObjectNode) mapper.readTree(
                 "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"));
@@ -52,6 +55,10 @@ class RoutingTest {
 
     @Test
     void weightedRoutingIsStablePerKeyAndSplitsAcrossKeys() throws Exception {
+        // Weighting is opt-in: configure a 50/50 canary first.
+        var group = routes.findByPublicModelIdOrderByPriorityAsc("auto-fast");
+        group.forEach(route -> route.setWeight(50));
+        routes.saveAll(group);
         ChatRequestSpec spec = spec("auto-fast");
 
         String first = resolver.resolve(spec, 42L).get(0).providerSlug();

@@ -64,6 +64,9 @@ gateway:
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
   cache:
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  rate-limit:
+    backend: ${GATEWAY_RATE_LIMIT_BACKEND:memory}
+    prefix: ${GATEWAY_RATE_LIMIT_PREFIX:path}
   prompt-logging:
     enabled: ${GATEWAY_PROMPT_LOGGING:false}
     retention: ${GATEWAY_PROMPT_LOG_RETENTION:7d}
@@ -96,6 +99,9 @@ management:
     metrics:
       export:
         enabled: true
+  health:
+    redis:
+      enabled: false
   tracing:
     sampling:
       probability: ${GATEWAY_TRACE_SAMPLE:0}

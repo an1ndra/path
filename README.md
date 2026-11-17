@@ -33,7 +33,8 @@ flowchart LR
   through, with capability aliases (`cheap`, `fast`, `long-context`) and weighted canary
   splits.
 - **Keys, budgets and limits** — `sk-gw-...` keys with lifetime/daily/monthly budgets,
-  per-key model allowlists, RPM and in-flight caps.
+  per-key model allowlists, RPM and in-flight caps; projects and scoped admin tokens for
+  teams.
 - **Cache-aware metering** — prompt, completion, cached and reasoning tokens, itemised
   cost, TTFT and throughput per call.
 - **Operable** — Flyway migrations, health/readiness, Prometheus metrics, tracing,

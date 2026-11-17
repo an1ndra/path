@@ -67,6 +67,7 @@ public class AdminService {
                            @JsonAlias("rpmLimit") Integer rpmLimit,
                            @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
                            @JsonAlias("allowedModels") String allowedModels,
+                           @JsonAlias("projectId") Long projectId,
                            Boolean enabled) {
     }
 
@@ -332,9 +333,12 @@ public class AdminService {
 
     // ------------------------------------------------------------------- keys
 
-    public List<Map<String, Object>> listKeys() {
+    public List<Map<String, Object>> listKeys(Long projectId) {
         List<Map<String, Object>> out = new ArrayList<>();
-        clientKeys.findAllByOrderByCreatedAtDesc().forEach(k -> out.add(keyView(k)));
+        var found = projectId == null
+                ? clientKeys.findAllByOrderByCreatedAtDesc()
+                : clientKeys.findByProjectIdOrderByCreatedAtDesc(projectId);
+        found.forEach(k -> out.add(keyView(k)));
         return out;
     }
 
@@ -348,6 +352,7 @@ public class AdminService {
         created.key().setMonthlyLimitUsd(in.monthlyLimitUsd());
         created.key().setMaxOutputTokens(in.maxOutputTokens());
         created.key().setAllowedModels(in.allowedModels());
+        created.key().setProjectId(in.projectId());
         clientKeys.save(created.key());
         Map<String, Object> view = keyView(created.key());
         view.put("key", created.plaintext());
@@ -388,6 +393,9 @@ public class AdminService {
         }
         if (in.allowedModels() != null) {
             key.setAllowedModels(in.allowedModels());
+        }
+        if (in.projectId() != null) {
+            key.setProjectId(in.projectId());
         }
         if (in.enabled() != null) {
             key.setEnabled(in.enabled());
@@ -433,6 +441,7 @@ public class AdminService {
         view.put("monthly_limit_usd", k.getMonthlyLimitUsd());
         view.put("max_output_tokens", k.getMaxOutputTokens());
         view.put("allowed_models", k.getAllowedModels());
+        view.put("project_id", k.getProjectId());
         view.put("credit_limit_usd", k.getCreditLimitUsd());
         view.put("used_usd", k.getUsedUsd());
         view.put("created_at", k.getCreatedAt().toString());

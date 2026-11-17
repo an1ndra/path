@@ -29,7 +29,8 @@ public class CreditGuard {
     private final GatewayProperties props;
     private final com.anindra.path.admin.AlertService alerts;
 
-    public void check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
+    /** @return the amount reserved for this call; release it when the call ends. */
+    public BigDecimal check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
         if (!allows(key, spec.publicModel())) {
             throw new ApiException(403, "permission_error", "model_not_allowed",
                     "This API key is not allowed to use model '" + spec.publicModel() + "'.");
@@ -49,7 +50,7 @@ public class CreditGuard {
 
         BigDecimal remaining = apiKeys.remaining(key);
         if (remaining == null) {
-            return;
+            return BigDecimal.ZERO;
         }
         if (key.getCreditLimitUsd() != null && key.getCreditLimitUsd().signum() > 0) {
             double left = remaining.divide(key.getCreditLimitUsd(), 4, java.math.RoundingMode.HALF_UP).doubleValue();
@@ -78,6 +79,11 @@ public class CreditGuard {
                             + " USD but only " + remaining.toPlainString()
                             + " USD of credit remains. Lower max_tokens or top up the key.");
         }
+        if (!apiKeys.reserve(key.getId(), worstCase)) {
+            throw ApiException.insufficientCredits(
+                    "Credit is exhausted by concurrent requests. Retry shortly or top up the key.");
+        }
+        return worstCase;
     }
 
     /** Comma-separated ids or globs; blank means every model. */

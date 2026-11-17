@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,11 +64,15 @@ public class StreamService {
         adapterList.forEach(a -> adapters.put(a.type(), a));
     }
 
+    /** Route chain plus the budget reserved for it; release the reservation when done. */
+    public record Prepared(List<RouteResolver.ResolvedRoute> chain, BigDecimal reserved) {
+    }
+
     /** Resolve the fallback chain and authorise spend. Throws before any bytes are sent. */
-    public List<RouteResolver.ResolvedRoute> prepare(ChatRequestSpec spec, ClientKey key) {
+    public Prepared prepare(ChatRequestSpec spec, ClientKey key) {
         List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
-        creditGuard.check(key, spec, chain.get(0));
-        return chain;
+        BigDecimal reserved = creditGuard.check(key, spec, chain.get(0));
+        return new Prepared(chain, reserved);
     }
 
     /** Blocks for the whole stream. Safe on a virtual thread. */

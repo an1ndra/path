@@ -20,6 +20,7 @@ public class AdminController {
     private final ProviderProbeService probes;
     private final AuditService audit;
     private final PromptLogService promptLogs;
+    private final TenancyService tenancy;
 
     // ------------------------------------------------------------- providers
 
@@ -82,8 +83,8 @@ public class AdminController {
     // ------------------------------------------------------------------ keys
 
     @GetMapping("/keys")
-    public List<Map<String, Object>> keys() {
-        return admin.listKeys();
+    public List<Map<String, Object>> keys(@RequestParam(required = false) Long projectId) {
+        return admin.listKeys(projectId);
     }
 
     @PostMapping("/keys")
@@ -111,6 +112,58 @@ public class AdminController {
     @PostMapping("/keys/{id}/topup")
     public Map<String, Object> topUp(@PathVariable Long id, @RequestBody Map<String, BigDecimal> body) {
         return admin.topUpKey(id, body.get("amount_usd"));
+    }
+
+    // -------------------------------------------------------------- tenancy
+
+    public record ProjectInput(String slug, String name) {
+    }
+
+    public record TokenInput(String name, String scopes) {
+    }
+
+    @GetMapping("/projects")
+    public List<Map<String, Object>> projects() {
+        return tenancy.listProjects();
+    }
+
+    @PostMapping("/projects")
+    public Map<String, Object> createProject(@RequestBody ProjectInput input) {
+        var created = tenancy.createProject(input.slug(), input.name());
+        audit.record("project.create", "project:" + created.get("id"), input);
+        return created;
+    }
+
+    @DeleteMapping("/projects/{id}")
+    public Map<String, Object> deleteProject(@PathVariable Long id) {
+        tenancy.deleteProject(id);
+        audit.record("project.delete", "project:" + id, null);
+        return Map.of("deleted", true, "id", id);
+    }
+
+    @GetMapping("/tokens")
+    public List<Map<String, Object>> tokens() {
+        return tenancy.listTokens();
+    }
+
+    @PostMapping("/tokens")
+    public Map<String, Object> createToken(@RequestBody TokenInput input) {
+        var created = tenancy.createToken(input.name(), input.scopes());
+        audit.record("token.create", "token:" + created.token().getId(), input);
+        Map<String, Object> view = new java.util.LinkedHashMap<>();
+        view.put("id", created.token().getId());
+        view.put("name", created.token().getName());
+        view.put("scopes", created.token().getScopes());
+        view.put("token", created.plaintext());
+        view.put("warning", "Store this token now. It is not shown again.");
+        return view;
+    }
+
+    @PostMapping("/tokens/{id}/revoke")
+    public Map<String, Object> revokeToken(@PathVariable Long id) {
+        var revoked = tenancy.revokeToken(id);
+        audit.record("token.revoke", "token:" + id, null);
+        return revoked;
     }
 
     // ------------------------------------------------------------- reporting

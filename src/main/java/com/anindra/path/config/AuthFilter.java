@@ -4,7 +4,7 @@ import com.anindra.path.api.ApiException;
 import com.anindra.path.api.GlobalExceptionHandler;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.gateway.ApiKeyService;
-import com.anindra.path.gateway.RateLimiter;
+import com.anindra.path.gateway.RateLimitStore;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,9 +33,11 @@ import java.security.MessageDigest;
 public class AuthFilter extends OncePerRequestFilter {
 
     public static final String CLIENT_KEY_ATTR = "gateway.clientKey";
+    public static final String ADMIN_PRINCIPAL_ATTR = "gateway.adminPrincipal";
 
     private final ApiKeyService apiKeys;
-    private final RateLimiter rateLimiter;
+    private final RateLimitStore rateLimiter;
+    private final com.anindra.path.admin.TenancyService tenancy;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
 
@@ -95,12 +97,26 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private void requireAdmin(HttpServletRequest request) {
         String expected = props.getAdminToken();
-        if (expected == null || expected.isBlank()) {
-            throw ApiException.forbidden("The admin API is disabled. Set GATEWAY_ADMIN_TOKEN to enable it.");
-        }
         String provided = request.getHeader("X-Admin-Token");
-        if (provided == null || !constantTimeEquals(expected, provided)) {
+        if (provided == null || provided.isBlank()) {
             throw ApiException.unauthorized("Invalid or missing X-Admin-Token.", "invalid_admin_token");
+        }
+
+        com.anindra.path.admin.TenancyService.Principal principal;
+        if (expected != null && !expected.isBlank() && constantTimeEquals(expected, provided)) {
+            principal = new com.anindra.path.admin.TenancyService.Principal(
+                    "bootstrap", java.util.Set.of("read", "write"));
+        } else {
+            principal = tenancy.authenticate(provided)
+                    .orElseThrow(() -> ApiException.unauthorized(
+                            "Invalid or missing X-Admin-Token.", "invalid_admin_token"));
+        }
+
+        request.setAttribute(ADMIN_PRINCIPAL_ATTR, principal);
+        boolean mutating = !"GET".equalsIgnoreCase(request.getMethod())
+                && !"HEAD".equalsIgnoreCase(request.getMethod());
+        if (mutating && !principal.canWrite()) {
+            throw ApiException.forbidden("This admin token has read-only scope.");
         }
     }
 

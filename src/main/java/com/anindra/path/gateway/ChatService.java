@@ -31,6 +31,7 @@ public class ChatService {
     private final ProviderCredentials credentials;
     private final UpstreamClient upstream;
     private final UsageService usage;
+    private final ApiKeyService apiKeys;
     private final CreditGuard creditGuard;
     private final ProviderCircuitBreaker breaker;
     private final ResponseCacheService cache;
@@ -39,13 +40,15 @@ public class ChatService {
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
-                       UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
+                       UsageService usage, ApiKeyService apiKeys, CreditGuard creditGuard,
+                       ProviderCircuitBreaker breaker,
                        ResponseCacheService cache, GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
+        this.apiKeys = apiKeys;
         this.creditGuard = creditGuard;
         this.breaker = breaker;
         this.cache = cache;
@@ -56,8 +59,8 @@ public class ChatService {
 
     public Result complete(ChatRequestSpec spec, ClientKey key) {
         List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
-        creditGuard.check(key, spec, chain.get(0));
-
+        BigDecimal reserved = creditGuard.check(key, spec, chain.get(0));
+        try {
         List<String> failures = new ArrayList<>();
         ApiException lastError = null;
         long started = System.nanoTime();
@@ -188,6 +191,9 @@ public class ChatService {
         usage.recordError(key, spec, null, null, elapsedMs(started), false, attempts,
                 lastError.code(), lastError.getMessage());
         throw lastError;
+        } finally {
+            apiKeys.release(key.getId(), reserved);
+        }
     }
 
     /** Used only when a provider returns no usage block at all. */

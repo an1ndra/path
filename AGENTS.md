@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (72)
+# unit + integration tests (85)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (99 checks, no real keys)
+# full end-to-end suite against a mock upstream (104 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -48,13 +48,14 @@ com.anindra.path
 │   ├── ProviderCircuitBreaker    per-provider OPEN/HALF_OPEN/CLOSED, Retry-After
 │   ├── IdempotencyService        Idempotency-Key claims and replay
 │   ├── ConcurrencyLimiter        per-key in-flight permits
+│   ├── RateLimitStore            in-memory or Valkey RPM limiter
 │   ├── ResponseCacheService      exact-match replay, opt-in per route
 │   ├── DrainState                shutdown drain + readiness
 │   └── (config) RequestIdFilter  X-Request-Id + MDC correlation
 │   ├── RouteResolver             public model id → ordered chain (aliases, weights)
 │   ├── ModelAliasService         cheap/fast/long-context/vision
 │   ├── EmbeddingsService         /v1/embeddings for OPENAI-type providers
-│   └── (admin) AuditService, AlertService, PromptLogService
+│   └── (admin) AuditService, AlertService, PromptLogService, TenancyService
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
 │   └── TokenUsage                normalised token accounting
@@ -138,7 +139,7 @@ Keep README short: a feature can be one bullet there and a section in the matchi
 - `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
 - `CreditGuardTest` — budget windows and max_tokens clamping.
 - `DrainStateTest` — in-flight accounting and refusal while draining.
-- `tools/smoke_test.py` — 99 checks against `tools/mock-upstream.py`. The mock can
+- `tools/smoke_test.py` — 104 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -191,7 +192,15 @@ a smoke check. Never claim a fix without running both.
   without setting `OTEL_EXPORTER_OTLP_ENDPOINT` produces export warnings, not traces.
 - **The `prod` profile switches logs to ECS JSON.** `requestId` comes from
   `RequestIdFilter`'s MDC entry; `traceId`/`spanId` are added by the tracing bridge.
-- **Rate limiting is in-memory**, one node. Running two instances doubles the effective
+- **RPM limiting defaults to memory; set `GATEWAY_RATE_LIMIT_BACKEND=valkey` in a
+  cluster.** Budget reservations are database-backed either way, so money is safe
+  without Valkey.
+- **Admin tokens are scoped.** The bootstrap env token is read+write; DB tokens are
+  read-only unless `scopes` contains `write`.
+- **Weighting is opt-in.** A chain of default-weight (100) routes keeps priority order;
+  canary shuffling only happens once a weight differs from 100. Otherwise fallback would
+  become a lottery.
+- **Rate limiting is in-memory** by default, one node. Running two instances doubles the effective
   RPM limit.
 - **H2 rejects `AUTO_SERVER=TRUE` together with `DB_CLOSE_ON_EXIT`.** Don't re-add it.
 - **Admin credentials are resolved DB → config → env.** A key stored via the admin API

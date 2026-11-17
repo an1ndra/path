@@ -33,6 +33,25 @@ curl -s -X POST localhost:8080/admin/keys/1/revoke -H "$A"
 curl -s -X POST localhost:8080/admin/models/sync -H "$A"
 ```
 
+## Projects and admin tokens
+
+Projects group keys and usage. Admin tokens carry `read` or `read,write`; the bootstrap
+`GATEWAY_ADMIN_TOKEN` always has full access.
+
+```bash
+curl -s -X POST localhost:8080/admin/projects -H "$A" -H 'Content-Type: application/json' \
+  -d '{"slug":"team-a","name":"Team A"}'
+
+# issue a read-only token for a dashboard
+curl -s -X POST localhost:8080/admin/tokens -H "$A" -H 'Content-Type: application/json' \
+  -d '{"name":"dashboard","scopes":"read"}'
+
+curl -s 'localhost:8080/admin/keys?projectId=1' -H "$A"
+curl -s -X POST localhost:8080/admin/tokens/1/revoke -H "$A"
+```
+
+A read-only token can `GET` any admin endpoint and gets 403 on anything mutating.
+
 ## Provider operations
 
 ```bash

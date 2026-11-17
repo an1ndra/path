@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -214,14 +215,16 @@ def main():
 
     # ------------------------------------------------------------ response cache
     _, _, route_list = jreq("GET", "/admin/routes?model=gpt-4o-mini", admin=True)
-    target = next((r for r in route_list if r["provider"] == "openai"), None)
-    check("found the route to cache", target is not None)
-    if target:
-        jreq("PATCH", f"/admin/routes/{target['id']}",
+    targets = [r for r in route_list if r["provider"] == "openai"]
+    check("found the route to cache", bool(targets))
+    for route in targets:
+        jreq("PATCH", f"/admin/routes/{route['id']}",
              {"cache_enabled": True, "cache_ttl_seconds": 60}, admin=True)
 
+    # Unique prompt so a warm database does not already hold this answer.
+    marker_text = f"cached prompt {time.time_ns()}"
     cached_body = {"model": "gpt-4o-mini", "temperature": 0,
-                   "messages": [{"role": "user", "content": "cached prompt"}]}
+                   "messages": [{"role": "user", "content": marker_text}]}
     _, ch1, cb1 = jreq("POST", "/v1/chat/completions", cached_body, key=key)
     _, ch2, cb2 = jreq("POST", "/v1/chat/completions", cached_body, key=key)
     check("cache miss then hit",
@@ -237,7 +240,7 @@ def main():
           str(warm_h.get("X-Path-Cache")))
 
     stream_cached = {"model": "gpt-4o-mini", "temperature": 0, "stream": True,
-                     "messages": [{"role": "user", "content": "cached stream"}]}
+                     "messages": [{"role": "user", "content": f"cached stream {time.time_ns()}"}]}
     _, sh1, sp1 = sse_post("/v1/chat/completions", stream_cached, key)
     _, sh2, sp2 = sse_post("/v1/chat/completions", stream_cached, key)
     check("stream cache miss then hit",
@@ -398,6 +401,34 @@ def main():
                      {"model": "claude-3.5-haiku", "messages": [{"role": "user", "content": "hi"}]}, key=ak)
     check("model allowlist blocks other models",
           a1 == 200 and a2 == 403 and ab["error"]["code"] == "model_not_allowed", f"{a1}/{a2}")
+
+    # --------------------------------------------------------------- tenancy
+    status, _, _ = jreq("POST", "/admin/projects", {"slug": "smoke-team", "name": "Smoke Team"}, admin=True)
+    _, _, project_list = jreq("GET", "/admin/projects", admin=True)
+    project = next((p for p in project_list if p["slug"] == "smoke-team"), None)
+    check("project is created", project is not None, str(status))
+
+    _, _, token = jreq("POST", "/admin/tokens", {"name": "smoke-read", "scopes": "read"}, admin=True)
+    read_only = token.get("token")
+    check("scoped token is issued once", bool(read_only) and read_only.startswith("adm_"),
+          str(token)[:80])
+
+    r1, _, _ = jreq("GET", "/admin/providers", headers={"X-Admin-Token": read_only})
+    r2, _, r2body = jreq("POST", "/admin/keys", {"name": "nope"},
+                         headers={"X-Admin-Token": read_only})
+    check("read-only token can GET but not POST",
+          r1 == 200 and r2 == 403, f"{r1}/{r2} {r2body}"[:120])
+
+    if project:
+        status, _, scoped_key = jreq("POST", "/admin/keys",
+                                     {"name": "project-key", "project_id": project["id"]}, admin=True)
+        check("key can belong to a project",
+              status == 200 and scoped_key.get("project_id") == project["id"],
+              str(status) + str(scoped_key)[:100])
+        _, _, scoped_keys = jreq("GET", f"/admin/keys?projectId={project['id']}", admin=True)
+        check("keys filter by project",
+              any(k.get("name") == "project-key" for k in scoped_keys),
+              str(len(scoped_keys)))
 
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {

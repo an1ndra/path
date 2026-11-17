@@ -47,9 +47,11 @@
 
 ## Known gaps
 
-- **Rate limiting and circuit state are in-memory, one node.** Exact on a single
-  instance, approximate across a cluster. A Redis-backed limiter is issue #20.
-- **No org/project hierarchy.** Keys are flat; scoped admin tokens are issue #33.
+- **Circuit state is in-memory, one node.** The breaker and concurrency limiter are
+  per-JVM; the RPM limiter and budget reservations are shared (Valkey and the database
+  respectively).
+- **Projects group keys, not billing.** A project is a tag on keys; there is no per-project
+  budget or invoice rollup yet.
 - **Embeddings are OpenAI-compatible only.** An Anthropic route returns 501
   `unsupported_endpoint`.
 - **Images and audio are not proxied** beyond image blocks inside chat messages.
@@ -58,5 +60,5 @@
 - **Model sync** filters out non-chat ids and prices only the ids in
   `ModelSyncService.PRICES`; everything else lands at 0.00 until edited.
 - **Prompt logs cover non-streaming chat only.**
-- **The fuzz harness is not built yet** (issue #37); the property test covers the
-  translation invariants.
+- **Fuzzing is time-boxed.** `ChatRequestFuzzTest` runs Jazzer for 10s per build; deeper
+  fuzzing is a manual `jazzer` run rather than a long CI job.

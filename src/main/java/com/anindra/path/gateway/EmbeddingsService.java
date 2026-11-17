@@ -31,6 +31,7 @@ public class EmbeddingsService {
     private final ProviderCredentials credentials;
     private final UpstreamClient upstream;
     private final UsageService usage;
+    private final ApiKeyService apiKeys;
     private final CreditGuard creditGuard;
     private final ObjectMapper mapper;
 
@@ -46,7 +47,7 @@ public class EmbeddingsService {
 
         ChatRequestSpec spec = routingSpec(model);
         List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
-        creditGuard.check(key, spec, chain.get(0));
+        BigDecimal reserved = creditGuard.check(key, spec, chain.get(0));
 
         RouteResolver.ResolvedRoute resolved = chain.stream()
                 .filter(r -> r.provider().getType() == ProviderType.OPENAI)
@@ -62,13 +63,21 @@ public class EmbeddingsService {
                     "provider_not_configured");
         }
 
+        long started = System.nanoTime();
+        try {
+            return doEmbed(request, key, spec, resolved, provider, apiKey, model, started);
+        } finally {
+            apiKeys.release(key.getId(), reserved);
+        }
+    }
+
+    private Result doEmbed(ObjectNode request, ClientKey key, ChatRequestSpec spec,
+                           RouteResolver.ResolvedRoute resolved, Provider provider, String apiKey,
+                           String model, long started) {
         ObjectNode body = request.deepCopy();
         body.put("model", resolved.route().getUpstreamModelId());
-
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Authorization", "Bearer " + apiKey);
-
-        long started = System.nanoTime();
         try {
             UpstreamClient.Response response = upstream.postJson(
                     provider.getBaseUrl() + "/embeddings", headers, body.toString());

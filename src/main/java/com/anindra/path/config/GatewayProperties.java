@@ -58,6 +58,7 @@ public class GatewayProperties {
     private Cache cache = new Cache();
     private Alerts alerts = new Alerts();
     private PromptLogging promptLogging = new PromptLogging();
+    private RateLimit rateLimit = new RateLimit();
 
     @Getter
     @Setter
@@ -68,6 +69,14 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class RateLimit {
+        /** "memory" (single node) or "valkey" (shared across instances). */
+        private String backend = "memory";
+        private String prefix = "path";
     }
 
     @Getter

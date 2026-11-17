@@ -132,6 +132,7 @@ public class AdminController {
         guardrails.put("moderation", props.getGuardrails().isModeration());
 
         Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("auth_mode", props.getProxyAuth().isEnabled() ? "proxy" : "token");
         out.put("prompt_logging", props.getPromptLogging().isEnabled());
         out.put("guardrails", guardrails);
         out.put("rate_limit_backend", props.getRateLimit().getBackend());

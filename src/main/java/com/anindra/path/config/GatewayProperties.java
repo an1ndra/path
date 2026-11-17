@@ -64,6 +64,7 @@ public class GatewayProperties {
     private PromptLogging promptLogging = new PromptLogging();
     private RateLimit rateLimit = new RateLimit();
     private AdminAuth adminAuth = new AdminAuth();
+    private ProxyAuth proxyAuth = new ProxyAuth();
 
     @Getter
     @Setter
@@ -74,6 +75,17 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class ProxyAuth {
+        /** Trust an identity header injected by an authenticating reverse proxy (SSO at the edge). */
+        private boolean enabled = false;
+        /** Header the proxy sets, e.g. X-Forwarded-User or Cf-Access-Authenticated-User-Email. */
+        private String header = "X-Forwarded-User";
+        /** Scopes granted to a proxy-authenticated identity. */
+        private String scopes = "read,write";
     }
 
     @Getter

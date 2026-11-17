@@ -66,6 +66,12 @@ gateway:
     semantic-model: ${GATEWAY_SEMANTIC_MODEL:}
     semantic-max-entries: ${GATEWAY_SEMANTIC_MAX_ENTRIES:200}
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  proxy-auth:
+    # Set to true only when the gateway is unreachable except through the proxy that sets
+    # this header. See docs/SSO.md.
+    enabled: ${GATEWAY_PROXY_AUTH:false}
+    header: ${GATEWAY_PROXY_AUTH_HEADER:X-Forwarded-User}
+    scopes: ${GATEWAY_PROXY_AUTH_SCOPES:read,write}
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}

@@ -109,6 +109,29 @@ public class AuthFilter extends OncePerRequestFilter {
         }
     }
 
+    /** Fails closed: no identity header means no admin access, whatever else is sent. */
+    private void requireProxyIdentity(HttpServletRequest request) {
+        String header = props.getProxyAuth().getHeader();
+        String identity = request.getHeader(header);
+        if (identity == null || identity.isBlank()) {
+            throw ApiException.unauthorized(
+                    "Admin access requires a signed-in session; the proxy did not send " + header + ".",
+                    "proxy_identity_missing");
+        }
+        java.util.Set<String> scopes = java.util.Arrays.stream(
+                        props.getProxyAuth().getScopes().split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toSet());
+        request.setAttribute(ADMIN_PRINCIPAL_ATTR,
+                new com.anindra.path.admin.TenancyService.Principal(identity.trim(), scopes));
+        boolean mutating = !"GET".equalsIgnoreCase(request.getMethod())
+                && !"HEAD".equalsIgnoreCase(request.getMethod());
+        if (mutating && !scopes.contains("write")) {
+            throw ApiException.forbidden("This identity has read-only scope.");
+        }
+    }
+
     private boolean isPublicModelsRequest(HttpServletRequest request) {
         return props.isPublicModels()
                 && "GET".equalsIgnoreCase(request.getMethod())
@@ -128,6 +151,15 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     private void requireAdmin(HttpServletRequest request) {
+        // SSO at the edge: an authenticating proxy (Authentik, Keycloak, oauth2-proxy, Cloudflare
+        // Access) resolves the human and injects an identity header. The gateway then trusts it
+        // instead of a pasted token. This is only safe when the gateway cannot be reached except
+        // through that proxy — docs/SSO.md says so in bold, and the startup log repeats it.
+        if (props.getProxyAuth().isEnabled()) {
+            requireProxyIdentity(request);
+            return;
+        }
+
         String expected = props.getAdminToken();
         String provided = request.getHeader("X-Admin-Token");
         if (provided == null || provided.isBlank()) {

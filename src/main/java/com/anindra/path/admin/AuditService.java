@@ -2,6 +2,7 @@ package com.anindra.path.admin;
 
 import com.anindra.path.domain.AdminAudit;
 import com.anindra.path.repo.AdminAuditRepository;
+import com.anindra.path.config.AuthFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class AuditService {
     public void record(String action, String target, Object details) {
         try {
             AdminAudit entry = new AdminAudit();
-            entry.setActor("shared-admin");
+            entry.setActor(currentActor());
             entry.setAction(action);
             entry.setTarget(target);
             String json = details == null ? null : mapper.writeValueAsString(details);
@@ -38,6 +39,28 @@ public class AuditService {
             // Auditing must never break the operation it describes.
             log.warn("Could not record audit entry {}: {}", action, e.getMessage());
         }
+    }
+
+    /**
+     * The identity behind the request: the proxy-authenticated SSO user, the name of the
+     * admin token, or "shared-admin" when neither is available. Attribution is the point of
+     * the audit log, so this is resolved per request rather than per service instance.
+     */
+    private static String currentActor() {
+        try {
+            var attributes = org.springframework.web.context.request.RequestContextHolder
+                    .getRequestAttributes();
+            if (attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet) {
+                Object principal = servlet.getRequest().getAttribute(AuthFilter.ADMIN_PRINCIPAL_ATTR);
+                if (principal instanceof com.anindra.path.admin.TenancyService.Principal p
+                        && p.name() != null && !p.name().isBlank()) {
+                    return p.name();
+                }
+            }
+        } catch (Exception ignored) {
+            // outside a request (scheduled work, tests): fall through
+        }
+        return "shared-admin";
     }
 
     public List<Map<String, Object>> list(String action, int limit) {

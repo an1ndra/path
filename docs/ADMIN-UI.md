@@ -26,6 +26,12 @@ curl -X POST http://localhost:8080/admin/tokens \
 `scopes` is `read` or `read,write`. Revoke with `POST /admin/tokens/{id}/revoke`.
 Every admin write is recorded in `GET /admin/audit`.
 
+## Single sign-on
+
+SSO, 2FA and passkeys are delegated to an authenticating proxy — Authentik, Keycloak,
+oauth2-proxy or Cloudflare Access — which injects an identity header the gateway trusts.
+See [`SSO.md`](SSO.md); the console detects that mode and skips its token screen.
+
 ## Hosting it
 
 Two shapes, and the choice decides whether you need CORS:

@@ -106,6 +106,7 @@ print(client.chat.completions.create(
 | [Why Path](docs/WHY-PATH.md) | Honest comparison and a 60-second demo |
 | [SSO and 2FA](docs/SSO.md) | Google/GitHub/enterprise SSO, passkeys and 2FA via an authenticating proxy |
 | [Admin UI](docs/ADMIN-UI.md) | The web console lives in `an1ndra/path-admin`; auth, hosting and CORS |
+| [Deploy on Dokploy](deploy/dokploy/README.md) | Two apps, compose or plain application, health checks, CORS |
 | [Publishing](docs/PUBLISHING.md) | Maven Central setup, signing and the release profile |
 | [Roadmap](docs/ROADMAP.md) | Delivered work and the open stories |
 | [Changelog](CHANGELOG.md) | Release notes, also used as the GitHub release body |

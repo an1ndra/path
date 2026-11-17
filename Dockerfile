@@ -30,6 +30,13 @@ RUN mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
+
+# curl is here for the container health check below: Dokploy (and Docker) can act on it,
+# and it is one small, patched package rather than the whole JDK toolchain.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/target/path-*.jar app.jar
 
 # Run as an unprivileged user (Trivy DS-0002) and keep ./data writable for the H2 file
@@ -41,4 +48,10 @@ USER path
 
 ENV PORT=8080
 EXPOSE 8080
+
+# Readiness includes drain state: a shutting-down pod reports 503, which is what a rolling
+# update should see. Uses the same endpoint the Helm chart probes.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/actuator/health || exit 1
+
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

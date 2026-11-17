@@ -66,6 +66,7 @@ public class AdminService {
                            @JsonAlias("maxOutputTokens") Integer maxOutputTokens,
                            @JsonAlias("rpmLimit") Integer rpmLimit,
                            @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
+                           @JsonAlias("allowedModels") String allowedModels,
                            Boolean enabled) {
     }
 
@@ -346,6 +347,7 @@ public class AdminService {
         created.key().setDailyLimitUsd(in.dailyLimitUsd());
         created.key().setMonthlyLimitUsd(in.monthlyLimitUsd());
         created.key().setMaxOutputTokens(in.maxOutputTokens());
+        created.key().setAllowedModels(in.allowedModels());
         clientKeys.save(created.key());
         Map<String, Object> view = keyView(created.key());
         view.put("key", created.plaintext());
@@ -383,6 +385,9 @@ public class AdminService {
         }
         if (in.maxOutputTokens() != null) {
             key.setMaxOutputTokens(in.maxOutputTokens());
+        }
+        if (in.allowedModels() != null) {
+            key.setAllowedModels(in.allowedModels());
         }
         if (in.enabled() != null) {
             key.setEnabled(in.enabled());
@@ -427,6 +432,7 @@ public class AdminService {
         view.put("daily_limit_usd", k.getDailyLimitUsd());
         view.put("monthly_limit_usd", k.getMonthlyLimitUsd());
         view.put("max_output_tokens", k.getMaxOutputTokens());
+        view.put("allowed_models", k.getAllowedModels());
         view.put("credit_limit_usd", k.getCreditLimitUsd());
         view.put("used_usd", k.getUsedUsd());
         view.put("created_at", k.getCreatedAt().toString());

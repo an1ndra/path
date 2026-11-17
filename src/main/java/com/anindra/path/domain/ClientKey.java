@@ -58,6 +58,10 @@ public class ClientKey {
     /** Null means use the gateway default. */
     private Integer maxConcurrentRequests;
 
+    /** Comma-separated model ids or globs (`gpt-*`); blank means every model. */
+    @Column(length = 1024)
+    private String allowedModels;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 

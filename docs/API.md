@@ -51,6 +51,7 @@ Every failure uses the OpenAI envelope:
 | `concurrency_limit_exceeded` | 429 | too many in-flight requests for this key |
 | `payload_too_large` | 413 | request body above `GATEWAY_MAX_REQUEST_BYTES` |
 | `unsupported_parameter` | 422 | parameter has no equivalent for this provider |
+| `model_not_allowed` | 403 | key's `allowed_models` does not cover the model |
 | `idempotency_conflict` | 409 | same `Idempotency-Key`, different body |
 | `idempotency_in_progress` | 409 | duplicate while the first attempt is running |
 | `shutting_down` | 503 | instance is draining; retry elsewhere |

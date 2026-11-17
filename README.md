@@ -373,6 +373,8 @@ python3 tools/smoke_test.py        # 49 checks
   replays the stored response — streams included — with `X-Path-Cache: hit`, billed at
   zero and reported as savings. Entries last `cache_ttl_seconds` (default 3600) and are
   scoped to the client key, so tenants cannot read each other's completions.
+- **Keys can be restricted to models.** `allowed_models` accepts ids and globs
+  (`gpt-4o-mini,claude-*`); anything else returns 403 `model_not_allowed`.
 - **Prompt logging is off by default and redacted when on.** Enable with
   `GATEWAY_PROMPT_LOGGING=true`; bodies are scrubbed of `sk-`/`gsk_`/`Bearer` tokens,
   capped at `GATEWAY_PROMPT_LOG_MAX_BYTES`, and deleted after the retention window.

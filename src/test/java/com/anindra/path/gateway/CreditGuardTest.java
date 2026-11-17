@@ -80,6 +80,38 @@ class CreditGuardTest {
     }
 
     @Test
+    void allowlistMatchesIdsAndGlobs() {
+        ClientKey key = key(null, null, null);
+
+        key.setAllowedModels("gpt-4o-mini,claude-*");
+        assertThat(CreditGuard.allows(key, "gpt-4o-mini")).isTrue();
+        assertThat(CreditGuard.allows(key, "claude-3.5-haiku")).isTrue();
+        assertThat(CreditGuard.allows(key, "llama-3.1-8b")).isFalse();
+
+        key.setAllowedModels("gpt-*");
+        assertThat(CreditGuard.allows(key, "llama-3.1-8b")).isFalse();
+
+        key.setAllowedModels(null);
+        assertThat(CreditGuard.allows(key, "anything")).isTrue();
+    }
+
+    @Test
+    void blocksAModelOutsideTheAllowlist() throws Exception {
+        ClientKey key = key(null, null, null);
+        key.setAllowedModels("gpt-4o-mini");
+        when(usage.spendFor(eq(1L), any(Instant.class))).thenReturn(BigDecimal.ZERO);
+
+        assertThatThrownBy(() -> guard.check(key, specOf("claude-3.5-haiku"), route()))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("code", "model_not_allowed");
+    }
+
+    private ChatRequestSpec specOf(String model) throws Exception {
+        return ChatRequestSpec.parse((ObjectNode) mapper.readTree(
+                "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"));
+    }
+
+    @Test
     void leavesSmallerMaxTokensAlone() throws Exception {
         ChatRequestSpec spec = spec("40");
         when(usage.spendFor(eq(1L), any(Instant.class))).thenReturn(BigDecimal.ZERO);

@@ -30,6 +30,10 @@ public class CreditGuard {
     private final com.anindra.path.admin.AlertService alerts;
 
     public void check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
+        if (!allows(key, spec.publicModel())) {
+            throw new ApiException(403, "permission_error", "model_not_allowed",
+                    "This API key is not allowed to use model '" + spec.publicModel() + "'.");
+        }
         Integer cap = key.getMaxOutputTokens() != null && key.getMaxOutputTokens() > 0
                 ? key.getMaxOutputTokens()
                 : (props.getMaxOutputTokens() > 0 ? props.getMaxOutputTokens() : null);
@@ -74,6 +78,30 @@ public class CreditGuard {
                             + " USD but only " + remaining.toPlainString()
                             + " USD of credit remains. Lower max_tokens or top up the key.");
         }
+    }
+
+    /** Comma-separated ids or globs; blank means every model. */
+    static boolean allows(ClientKey key, String model) {
+        String allowed = key.getAllowedModels();
+        if (allowed == null || allowed.isBlank()) {
+            return true;
+        }
+        for (String raw : allowed.split(",")) {
+            String pattern = raw.trim();
+            if (pattern.isEmpty()) {
+                continue;
+            }
+            if (pattern.equals("*") || pattern.equalsIgnoreCase(model)) {
+                return true;
+            }
+            if (pattern.endsWith("*")) {
+                String prefix = pattern.substring(0, pattern.length() - 1);
+                if (model.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void enforceWindow(String label, BigDecimal limit, BigDecimal spent,

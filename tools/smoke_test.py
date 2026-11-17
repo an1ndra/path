@@ -388,6 +388,17 @@ def main():
     check("prompt log endpoint responds (disabled by default)",
           status == 200 and isinstance(plogs, list), str(status))
 
+    # ------------------------------------------------------------- allowlist
+    _, _, allow_key = jreq("POST", "/admin/keys",
+                           {"name": "allowlist-key", "allowed_models": "gpt-4o-mini"}, admin=True)
+    ak = allow_key.get("key")
+    a1, _, _ = jreq("POST", "/v1/chat/completions",
+                    {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key=ak)
+    a2, _, ab = jreq("POST", "/v1/chat/completions",
+                     {"model": "claude-3.5-haiku", "messages": [{"role": "user", "content": "hi"}]}, key=ak)
+    check("model allowlist blocks other models",
+          a1 == 200 and a2 == 403 and ab["error"]["code"] == "model_not_allowed", f"{a1}/{a2}")
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

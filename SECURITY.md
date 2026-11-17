@@ -36,6 +36,7 @@ Every pull request runs:
 | Static analysis for Java | CodeQL |
 | Secrets and misconfiguration in the tree | Trivy |
 | Repointed action tags (every `uses:` is pinned to a commit SHA) | Dependabot + review |
+| Accepted CVEs (`.trivyignore.yaml`, each with a statement and an expiry date) | release gate + review |
 | Admin auth brute force (10 failures / 5 min per address) | built-in limiter |
 | Unit, integration and end-to-end tests | Maven + the smoke suite |
 

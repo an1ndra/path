@@ -1,6 +1,8 @@
 package com.anindra.path.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -25,6 +27,7 @@ public class Provider {
     private String displayName;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 32)
     private ProviderType type;
 
@@ -32,12 +35,25 @@ public class Provider {
     @Column(nullable = false, length = 512)
     private String baseUrl;
 
+    /**
+     * When set, this provider is an Azure OpenAI resource: the deployment name goes in the
+     * path, this value goes in {@code ?api-version}, and auth uses the {@code api-key}
+     * header. Null means a plain OpenAI-compatible endpoint.
+     */
+    @Column(length = 32)
+    private String apiVersion;
+
     /** AES-GCM encrypted upstream credential. Null falls back to the environment. */
     @Column(length = 2048)
     private String apiKeyCipher;
 
     @Column(nullable = false)
     private boolean enabled = true;
+
+    /** Null falls back to the gateway default. */
+    private Integer requestTimeoutMs;
+
+    private Integer streamIdleTimeoutMs;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();

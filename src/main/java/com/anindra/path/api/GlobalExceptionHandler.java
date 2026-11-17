@@ -3,6 +3,7 @@ package com.anindra.path.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 @RestControllerAdvice
 @RequiredArgsConstructor
+@Slf4j
 public class GlobalExceptionHandler {
 
     private final ObjectMapper mapper;
@@ -32,8 +34,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> badJson(HttpMessageNotReadableException e) {
+        if (causedByPayloadTooLarge(e)) {
+            return ResponseEntity.status(413)
+                    .body(envelope("payload_too_large", "invalid_request_error",
+                            "Request body is larger than the configured limit.", null));
+        }
         return ResponseEntity.badRequest()
                 .body(envelope("invalid_json", "invalid_request_error", "Request body is not valid JSON.", null));
+    }
+
+    private static boolean causedByPayloadTooLarge(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof com.anindra.path.config.PayloadTooLargeException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
@@ -50,9 +68,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unexpected(Exception e) {
+        String errorId = java.util.UUID.randomUUID().toString();
+        log.error("Unhandled error {}: {}", errorId, e.getMessage(), e);
         return ResponseEntity.internalServerError()
                 .body(envelope("internal_error", "server_error",
-                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), null));
+                        "Internal error. Quote reference " + errorId + " when contacting support.",
+                        null));
     }
 
     public static Map<String, Object> envelope(String code, String type, String message, String param) {

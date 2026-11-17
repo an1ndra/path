@@ -4,7 +4,7 @@ import com.anindra.path.api.ApiException;
 import com.anindra.path.api.GlobalExceptionHandler;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.gateway.ApiKeyService;
-import com.anindra.path.gateway.RateLimiter;
+import com.anindra.path.gateway.RateLimitStore;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,10 +33,16 @@ import java.security.MessageDigest;
 public class AuthFilter extends OncePerRequestFilter {
 
     public static final String CLIENT_KEY_ATTR = "gateway.clientKey";
+    /** Project concurrency cap for the resolved key, or absent when unlimited. */
+    public static final String PROJECT_CONCURRENCY_ATTR = "gateway.projectConcurrency";
+    public static final String ADMIN_PRINCIPAL_ATTR = "gateway.adminPrincipal";
 
     private final ApiKeyService apiKeys;
-    private final RateLimiter rateLimiter;
+    private final RateLimitStore rateLimiter;
+    private final com.anindra.path.admin.TenancyService tenancy;
+    private final AdminAuthLimiter adminAuthLimiter;
     private final GatewayProperties props;
+    private final com.anindra.path.repo.ProjectRepository projects;
     private final ObjectMapper mapper;
 
     @Override
@@ -67,11 +73,39 @@ public class AuthFilter extends OncePerRequestFilter {
                             "Rate limit exceeded (" + key.getRpmLimit() + " requests/minute). Retry in "
                                     + retryAfter + "s.", retryAfter);
                 }
+                enforceProjectLimit(request, key);
                 request.setAttribute(CLIENT_KEY_ATTR, key);
             }
             chain.doFilter(request, response);
         } catch (ApiException e) {
             writeError(response, e);
+        }
+    }
+
+    /**
+     * A project cap sits above the per-key one: forty keys at 120 rpm should still be
+     * bounded by whatever the project allows. The concurrency cap is stashed on the
+     * request because only the controller can hold a permit for the life of a stream.
+     */
+    private void enforceProjectLimit(HttpServletRequest request, ClientKey key) {
+        if (key.getProjectId() == null) {
+            return;
+        }
+        com.anindra.path.domain.Project project = projects.findById(key.getProjectId()).orElse(null);
+        if (project == null) {
+            return;
+        }
+        Integer projectRpm = project.getRpmLimit();
+        if (projectRpm != null && projectRpm > 0) {
+            int retryAfter = rateLimiter.acquire("project:" + project.getId(), projectRpm);
+            if (retryAfter > 0) {
+                throw ApiException.rateLimited(
+                        "Project '" + project.getSlug() + "' rate limit exceeded (" + projectRpm
+                                + " requests/minute). Retry in " + retryAfter + "s.", retryAfter);
+            }
+        }
+        if (project.getMaxConcurrentRequests() != null && project.getMaxConcurrentRequests() > 0) {
+            request.setAttribute(PROJECT_CONCURRENCY_ATTR, project.getMaxConcurrentRequests());
         }
     }
 
@@ -95,13 +129,47 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private void requireAdmin(HttpServletRequest request) {
         String expected = props.getAdminToken();
-        if (expected == null || expected.isBlank()) {
-            throw ApiException.forbidden("The admin API is disabled. Set GATEWAY_ADMIN_TOKEN to enable it.");
-        }
         String provided = request.getHeader("X-Admin-Token");
-        if (provided == null || !constantTimeEquals(expected, provided)) {
+        if (provided == null || provided.isBlank()) {
             throw ApiException.unauthorized("Invalid or missing X-Admin-Token.", "invalid_admin_token");
         }
+
+        String address = clientAddress(request);
+        long retryAfter = adminAuthLimiter.retryAfterSeconds(address);
+        if (retryAfter > 0) {
+            throw ApiException.rateLimited(
+                    "Too many failed admin authentication attempts. Retry in " + retryAfter + "s.",
+                    (int) retryAfter);
+        }
+
+        com.anindra.path.admin.TenancyService.Principal principal;
+        if (expected != null && !expected.isBlank() && constantTimeEquals(expected, provided)) {
+            adminAuthLimiter.onSuccess(address);
+            principal = new com.anindra.path.admin.TenancyService.Principal(
+                    "bootstrap", java.util.Set.of("read", "write"));
+        } else {
+            principal = tenancy.authenticate(provided).orElse(null);
+            if (principal == null) {
+                adminAuthLimiter.onFailure(address);
+                throw ApiException.unauthorized("Invalid or missing X-Admin-Token.", "invalid_admin_token");
+            }
+            adminAuthLimiter.onSuccess(address);
+        }
+
+        request.setAttribute(ADMIN_PRINCIPAL_ATTR, principal);
+        boolean mutating = !"GET".equalsIgnoreCase(request.getMethod())
+                && !"HEAD".equalsIgnoreCase(request.getMethod());
+        if (mutating && !principal.canWrite()) {
+            throw ApiException.forbidden("This admin token has read-only scope.");
+        }
+    }
+
+    private static String clientAddress(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private static boolean constantTimeEquals(String a, String b) {

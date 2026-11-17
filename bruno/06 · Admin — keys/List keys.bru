@@ -1,0 +1,14 @@
+meta {
+  name: List keys
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/admin/keys
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

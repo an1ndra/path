@@ -62,6 +62,7 @@ public class ProviderCredentials {
             case "openai" -> props.getProviders().getOpenai().getApiKey();
             case "anthropic" -> props.getProviders().getAnthropic().getApiKey();
             case "groq" -> props.getProviders().getGroq().getApiKey();
+            case "gemini" -> props.getProviders().getGemini().getApiKey();
             default -> null;
         };
         return value == null || value.isBlank() ? null : value.trim();

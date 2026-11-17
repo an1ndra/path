@@ -26,13 +26,14 @@ public final class ChatRequestSpec {
     private final List<String> fallbackModels;
     private final boolean stream;
     private final boolean includeUsage;
-    private final Integer maxTokens;
+    private Integer maxTokens;
     private final List<String> providerOrder;
     private final boolean allowFallbacks;
+    private final String endUser;
 
     private ChatRequestSpec(ObjectNode body, String publicModel, List<String> fallbackModels,
                             boolean stream, boolean includeUsage, Integer maxTokens,
-                            List<String> providerOrder, boolean allowFallbacks) {
+                            List<String> providerOrder, boolean allowFallbacks, String endUser) {
         this.body = body;
         this.publicModel = publicModel;
         this.fallbackModels = fallbackModels;
@@ -41,6 +42,7 @@ public final class ChatRequestSpec {
         this.maxTokens = maxTokens;
         this.providerOrder = providerOrder;
         this.allowFallbacks = allowFallbacks;
+        this.endUser = endUser;
     }
 
     public static ChatRequestSpec parse(ObjectNode body) {
@@ -48,6 +50,7 @@ public final class ChatRequestSpec {
         if (messages == null || !messages.isArray() || messages.isEmpty()) {
             throw ApiException.badRequest("'messages' must be a non-empty array.", "messages");
         }
+        boolean hasConversationalTurn = false;
         for (JsonNode message : messages) {
             if (!message.isObject() || !message.hasNonNull("role")) {
                 throw ApiException.badRequest("Every message needs a 'role'.", "messages");
@@ -56,11 +59,18 @@ public final class ChatRequestSpec {
             if (!ROLES.contains(role)) {
                 throw ApiException.badRequest("Unsupported message role: " + role, "messages");
             }
+            if (!role.equals("system") && !role.equals("developer")) {
+                hasConversationalTurn = true;
+            }
             JsonNode content = message.get("content");
             if (content != null && !content.isNull() && !content.isTextual() && !content.isArray()) {
                 throw ApiException.badRequest(
                         "message.content must be a string or an array of content parts.", "messages");
             }
+        }
+        if (!hasConversationalTurn) {
+            throw ApiException.badRequest(
+                    "'messages' must contain at least one non-system message.", "messages");
         }
 
         List<String> models = new ArrayList<>();
@@ -112,7 +122,7 @@ public final class ChatRequestSpec {
         }
 
         return new ChatRequestSpec(body, model, models, stream, includeUsage, maxTokens,
-                providerOrder, allowFallbacks);
+                providerOrder, allowFallbacks, readEndUser(body));
     }
 
     /** Deep copy with gateway-only fields stripped, ready to forward. */
@@ -122,12 +132,55 @@ public final class ChatRequestSpec {
         return copy;
     }
 
+    /**
+     * The caller's own end-user id. "end_user" is Path-specific and wins; "user" is
+     * accepted because it is what OpenAI clients already send.
+     */
+    private static String readEndUser(ObjectNode body) {
+        String value = firstText(body, "end_user", "user");
+        if (value == null) {
+            return null;
+        }
+        value = value.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (value.length() > 128) {
+            throw ApiException.badRequest("'end_user' must be at most 128 characters.", "end_user");
+        }
+        return value;
+    }
+
+    private static String firstText(ObjectNode body, String... names) {
+        for (String name : names) {
+            JsonNode node = body.get(name);
+            if (node != null && node.isTextual() && !node.asText().isBlank()) {
+                return node.asText();
+            }
+        }
+        return null;
+    }
+
+    public String endUser() { return endUser; }
+
     public ObjectNode body() { return body; }
     public String publicModel() { return publicModel; }
     public List<String> fallbackModels() { return fallbackModels; }
     public boolean stream() { return stream; }
     public boolean includeUsage() { return includeUsage; }
     public Integer maxTokens() { return maxTokens; }
+
+    /** Applies a per-key or global output cap, rewriting the body the way a client would. */
+    public void clampMaxTokens(Integer cap) {
+        if (cap == null || cap <= 0) {
+            return;
+        }
+        if (maxTokens == null || maxTokens > cap) {
+            maxTokens = cap;
+            body.put("max_tokens", cap);
+            body.remove("max_completion_tokens");
+        }
+    }
     public List<String> providerOrder() { return providerOrder; }
     public boolean allowFallbacks() { return allowFallbacks; }
 
@@ -175,23 +228,57 @@ public final class ChatRequestSpec {
         return sb.toString();
     }
 
-    /** Rough prompt size used only to pre-authorise spend. */
+    /**
+     * Prompt size used to pre-authorise spend. Counts real tokens when the upstream model
+     * has a known encoding, otherwise falls back to the chars/4 heuristic.
+     */
+    public int estimatePromptTokens(String model) {
+        return TokenCounter.count(body, model).tokens();
+    }
+
     public int estimatePromptTokens() {
-        int chars = 0;
-        for (JsonNode message : messages()) {
-            JsonNode content = message.get("content");
-            if (content != null) {
-                chars += textOf(content).length();
+        return estimatePromptTokens(null);
+    }
+
+    /**
+     * Builds a spec for token counting, where a system-only prompt is legitimate and the
+     * chat-completion rules (at least one conversational turn) do not apply.
+     */
+    public static ChatRequestSpec forCounting(ObjectNode body) {
+        List<String> models = new ArrayList<>();
+        JsonNode modelsNode = body.get("models");
+        if (modelsNode != null && modelsNode.isArray()) {
+            modelsNode.forEach(n -> {
+                if (n.isTextual() && !n.asText().isBlank()) {
+                    models.add(n.asText());
+                }
+            });
+        }
+        String model = body.path("model").isTextual() ? body.get("model").asText() : null;
+        if (model == null || model.isBlank()) {
+            model = models.isEmpty() ? null : models.get(0);
+        }
+        if (model == null || model.isBlank()) {
+            throw ApiException.badRequest("'model' is required.", "model");
+        }
+
+        List<String> providerOrder = new ArrayList<>();
+        boolean allowFallbacks = true;
+        JsonNode provider = body.get("provider");
+        if (provider != null && provider.isObject()) {
+            JsonNode order = provider.get("order");
+            if (order != null && order.isArray()) {
+                order.forEach(n -> {
+                    if (n.isTextual()) {
+                        providerOrder.add(n.asText());
+                    }
+                });
             }
-            JsonNode toolCalls = message.get("tool_calls");
-            if (toolCalls != null) {
-                chars += toolCalls.toString().length();
+            if (provider.has("allow_fallbacks")) {
+                allowFallbacks = provider.get("allow_fallbacks").asBoolean(true);
             }
         }
-        JsonNode tools = body.get("tools");
-        if (tools != null) {
-            chars += tools.toString().length();
-        }
-        return Math.max(1, chars / 4);
+        return new ChatRequestSpec(body, model, models, false, false, null, providerOrder,
+                allowFallbacks, readEndUser(body));
     }
 }

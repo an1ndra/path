@@ -30,9 +30,11 @@ public class UpstreamClient {
 
     private final HttpClient http;
     private final GatewayProperties props;
+    private final io.micrometer.tracing.Tracer tracer;
 
-    public UpstreamClient(GatewayProperties props) {
+    public UpstreamClient(GatewayProperties props, io.micrometer.tracing.Tracer tracer) {
         this.props = props;
+        this.tracer = tracer;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(props.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -43,16 +45,23 @@ public class UpstreamClient {
     public Response get(String url, Map<String, String> headers) throws IOException, InterruptedException {
         HttpRequest.Builder b = base(url, Duration.ofSeconds(30)).GET();
         headers.forEach(b::header);
+        addTraceparent(b);
         HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Response(resp.statusCode(), resp.body(), flatten(resp));
     }
 
     public Response postJson(String url, Map<String, String> headers, String body)
             throws IOException, InterruptedException {
-        HttpRequest.Builder b = base(url, props.getRequestTimeout())
+        return postJson(url, headers, body, props.getRequestTimeout());
+    }
+
+    public Response postJson(String url, Map<String, String> headers, String body, Duration timeout)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = base(url, timeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         headers.forEach(b::header);
+        addTraceparent(b);
         HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Response(resp.statusCode(), resp.body(), flatten(resp));
     }
@@ -65,6 +74,7 @@ public class UpstreamClient {
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         headers.forEach(b::header);
+        addTraceparent(b);
 
         HttpResponse<InputStream> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
         if (resp.statusCode() >= 400) {
@@ -72,7 +82,7 @@ public class UpstreamClient {
             try (InputStream in = resp.body()) {
                 errorBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            throw mapError(resp.statusCode(), errorBody);
+            throw mapError(resp.statusCode(), errorBody, flatten(resp));
         }
         return new LineStream(resp.body(), flatten(resp));
     }
@@ -87,16 +97,32 @@ public class UpstreamClient {
         return headers;
     }
 
+    /** W3C trace context, so provider-side logs join the same trace. */
+    private void addTraceparent(HttpRequest.Builder builder) {
+        io.micrometer.tracing.Span span = tracer.currentSpan();
+        if (span != null) {
+            var context = span.context();
+            builder.header("traceparent",
+                    "00-" + context.traceId() + "-" + context.spanId() + "-01");
+        }
+    }
+
     private HttpRequest.Builder base(String url, Duration timeout) {
         return HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
     }
 
     public static UpstreamException mapError(int status, String body) {
+        return mapError(status, body, Map.of());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper ERROR_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    public static UpstreamException mapError(int status, String body, Map<String, String> headers) {
         String message = body;
         String code = "upstream_error";
         try {
-            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            var node = mapper.readTree(body);
+            var node = ERROR_MAPPER.readTree(body);
             if (node.has("error")) {
                 var err = node.get("error");
                 if (err.isTextual()) {
@@ -121,7 +147,23 @@ public class UpstreamClient {
         if (status == 429) {
             code = "upstream_rate_limited";
         }
-        return new UpstreamException(status, code, truncate(message, 800));
+        return new UpstreamException(status, code, truncate(message, 800), retryAfterSeconds(headers));
+    }
+
+    /** Parses Retry-After in seconds. HTTP-date form is treated as 5s. */
+    private static int retryAfterSeconds(Map<String, String> headers) {
+        if (headers == null) {
+            return 0;
+        }
+        String raw = headers.get("retry-after");
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Math.min(3600, Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException e) {
+            return 5;
+        }
     }
 
     private static String truncate(String s, int max) {

@@ -25,7 +25,7 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class OpenAiAdapter implements ProviderAdapter {
+public class OpenAiCompatibleAdapter implements ProviderAdapter {
 
     private final ObjectMapper mapper;
 
@@ -46,10 +46,9 @@ public class OpenAiAdapter implements ProviderAdapter {
             streamOptions.put("include_usage", true);
         }
 
-        Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("Authorization", "Bearer " + apiKey);
-        headers.put("Accept", stream ? "text/event-stream" : "application/json");
-        return new UpstreamRequest(join(provider.getBaseUrl(), "/chat/completions"), headers, body.toString());
+        Map<String, String> headers = ProviderUrls.headers(provider, apiKey, stream);
+        return new UpstreamRequest(ProviderUrls.chat(provider, route.getUpstreamModelId()),
+                headers, body.toString());
     }
 
     @Override

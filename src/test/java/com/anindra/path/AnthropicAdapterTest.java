@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AnthropicAdapterTest {
 
@@ -91,6 +92,71 @@ class AnthropicAdapterTest {
         JsonNode tools = body.get("tools");
         assertThat(tools.get(0).get("name").asText()).isEqualTo("lookup");
         assertThat(tools.get(0).get("input_schema").get("type").asText()).isEqualTo("object");
+    }
+
+    @Test
+    void rejectsParametersAnthropicCannotExpress() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","seed":42,
+                 "messages":[{"role":"user","content":"hi"}]}
+                """);
+
+        assertThatThrownBy(() -> adapter.build(spec, route, provider, "k", false))
+                .isInstanceOf(com.anindra.path.api.ApiException.class)
+                .hasMessageContaining("seed")
+                .hasFieldOrPropertyWithValue("code", "unsupported_parameter");
+    }
+
+    @Test
+    void rejectsMultipleChoices() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","n":2,
+                 "messages":[{"role":"user","content":"hi"}]}
+                """);
+
+        assertThatThrownBy(() -> adapter.build(spec, route, provider, "k", false))
+                .hasMessageContaining("'n'");
+    }
+
+    @Test
+    void allowsTextResponseFormat() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","response_format":{"type":"text"},
+                 "messages":[{"role":"user","content":"hi"}]}
+                """);
+
+        UpstreamRequest request = adapter.build(spec, route, provider, "k", false);
+        assertThat(request.body()).isNotEmpty();
+    }
+
+    @Test
+    void mapsUserToMetadata() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","user":"tenant-42",
+                 "messages":[{"role":"user","content":"hi"}]}
+                """);
+
+        UpstreamRequest request = adapter.build(spec, route, provider, "k", false);
+        JsonNode body = mapper.readTree(request.body());
+        assertThat(body.get("metadata").get("user_id").asText()).isEqualTo("tenant-42");
+    }
+
+    @Test
+    void preservesCacheControlOnContentBlocks() throws Exception {
+        ChatRequestSpec spec = spec("""
+                {"model":"claude-3.5-haiku","max_tokens":50,
+                 "messages":[{"role":"user","content":[
+                    {"type":"text","text":"long stable prefix","cache_control":{"type":"ephemeral"}},
+                    {"type":"text","text":"question"}]}]}
+                """);
+
+        JsonNode body = mapper.readTree(
+                adapter.build(spec, route, provider, "k", false).body());
+        JsonNode firstBlock = body.path("messages").get(0).path("content").get(0);
+
+        assertThat(firstBlock.path("type").asText()).isEqualTo("text");
+        assertThat(firstBlock.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+        assertThat(body.path("messages").get(0).path("content").get(1).has("cache_control")).isFalse();
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.anindra.path.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.anindra.path.api.ApiException;
+import com.anindra.path.config.GatewayProperties;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.domain.Provider;
 import com.anindra.path.domain.ProviderType;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -22,43 +24,109 @@ import java.util.Map;
 public class ChatService {
 
     public record Result(JsonNode body, String providerSlug, String upstreamModel,
-                         BigDecimal costUsd, long latencyMs) {
+                         BigDecimal costUsd, long latencyMs, String cacheState) {
     }
 
     private final RouteResolver resolver;
     private final ProviderCredentials credentials;
     private final UpstreamClient upstream;
     private final UsageService usage;
+    private final ApiKeyService apiKeys;
     private final CreditGuard creditGuard;
+    private final ProviderCircuitBreaker breaker;
+    private final RoutingMetrics metrics;
+    private final ResponseCacheService cache;
+    private final SemanticCacheService semantic;
+    private final GatewayProperties props;
     private final ObjectMapper mapper;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public ChatService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
-                       UsageService usage, CreditGuard creditGuard, ObjectMapper mapper,
+                       UsageService usage, ApiKeyService apiKeys, CreditGuard creditGuard,
+                       ProviderCircuitBreaker breaker, RoutingMetrics metrics,
+                       ResponseCacheService cache, SemanticCacheService semantic,
+                       GatewayProperties props, ObjectMapper mapper,
                        List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
+        this.apiKeys = apiKeys;
         this.creditGuard = creditGuard;
+        this.breaker = breaker;
+        this.metrics = metrics;
+        this.cache = cache;
+        this.semantic = semantic;
+        this.props = props;
         this.mapper = mapper;
         adapterList.forEach(a -> adapters.put(a.type(), a));
     }
 
     public Result complete(ChatRequestSpec spec, ClientKey key) {
-        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec);
-        creditGuard.check(key, spec, chain.get(0));
-
+        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
+        CreditGuard.Reservation reserved = creditGuard.check(key, spec, chain.get(0));
+        try {
         List<String> failures = new ArrayList<>();
         ApiException lastError = null;
         long started = System.nanoTime();
         int attempts = 0;
         String fallbackFrom = null;
 
-        for (int i = 0; i < chain.size(); i++) {
+        boolean cacheEligible = ResponseCacheService.eligible(spec, chain.get(0).route());
+        String cacheKey = cacheEligible
+                ? cache.key(key.getId(), spec.publicModel(), spec.body().toString()) : null;
+        double[] promptVector = null;
+        if (cacheKey != null) {
+            var hit = cache.lookup(cacheKey);
+            if (hit.isPresent()) {
+                ResponseCacheService.Entry entry = hit.get();
+                usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                try {
+                    return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
+                            chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,
+                            elapsedMs(started), "hit");
+                } catch (IOException e) {
+                    log.warn("Cached body for {} is unreadable; falling through", spec.publicModel());
+                }
+            }
+
+            // Second tier: only for routes that opted in, and only after an exact miss.
+            if (chain.get(0).route().isSemanticCacheEnabled() && semantic.enabled()) {
+                promptVector = semantic.embed(spec.body().toString(), key);
+                double threshold = chain.get(0).route().getSemanticThreshold() == null
+                        ? 0.95 : chain.get(0).route().getSemanticThreshold().doubleValue();
+                var near = semantic.lookup(key.getId(), spec.publicModel(), promptVector, threshold);
+                if (near.isPresent()) {
+                    ResponseCacheService.Entry entry = entryOf(near.get().entry());
+                    usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                    try {
+                        return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
+                                chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,
+                                elapsedMs(started), "semantic");
+                    } catch (IOException e) {
+                        log.warn("Cached body for {} is unreadable; falling through", spec.publicModel());
+                    }
+                }
+            }
+        }
+
+        long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
+        int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
+
+        for (int i = 0; i < chain.size() && attempts < maxAttempts; i++) {
             RouteResolver.ResolvedRoute rr = chain.get(i);
             ProviderAdapter adapter = adapterFor(rr.provider());
             String apiKey = credentials.apiKey(rr.provider());
+            Long providerId = rr.provider().getId();
+
+            if (available > 0 && !breaker.isAvailable(providerId)) {
+                lastError = new ApiException(503, "upstream_error", "circuit_open",
+                        "Provider '" + rr.providerSlug() + "' is temporarily unavailable.");
+                failures.add(rr.providerSlug() + ": circuit open");
+                fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
+                continue;
+            }
+
             attempts++;
 
             if (apiKey == null) {
@@ -72,11 +140,20 @@ public class ChatService {
 
             try {
                 UpstreamRequest request = adapter.build(spec, rr.route(), rr.provider(), apiKey, false);
-                UpstreamClient.Response response = upstream.postJson(request.url(), request.headers(), request.body());
+                Duration timeout = rr.provider().getRequestTimeoutMs() != null
+                        ? Duration.ofMillis(rr.provider().getRequestTimeoutMs())
+                        : props.getRequestTimeout();
+                UpstreamClient.Response response = upstream.postJson(
+                        request.url(), request.headers(), request.body(), timeout);
 
                 if (!response.ok()) {
-                    UpstreamException failure = UpstreamClient.mapError(response.status(), response.body());
+                    UpstreamException failure = UpstreamClient.mapError(
+                            response.status(), response.body(), response.headers());
                     log.warn("Upstream {} -> {}: {}", rr.providerSlug(), failure.status(), failure.getMessage());
+                    metrics.recordFailure(rr.providerSlug(), spec.publicModel());
+                    if (failure.retryable()) {
+                        recordBreakerFailure(providerId, failure);
+                    }
                     if (failure.retryable() && i < chain.size() - 1) {
                         failures.add(rr.providerSlug() + ": " + failure.getMessage());
                         lastError = toApiException(failure);
@@ -95,7 +172,7 @@ public class ChatService {
 
                 TokenUsage tokens = adapter.parseUsage(upstreamJson);
                 if (!tokens.reported()) {
-                    tokens = estimate(spec, normalized);
+                    tokens = estimate(spec, normalized, rr.route().getUpstreamModelId());
                 }
 
                 String requestId = firstNonBlank(
@@ -108,12 +185,27 @@ public class ChatService {
                 long latency = elapsedMs(started);
                 BigDecimal cost = usage.recordSuccess(key, spec, rr, tokens,
                         UsageService.CallMeta.nonStream(latency, requestId, finishReason, attempts, fallbackFrom));
-                return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost, latency);
+                breaker.onSuccess(providerId);
+                metrics.recordSuccess(rr.providerSlug(), spec.publicModel(), latency);
+                if (cacheKey != null) {
+                    double[] vector = promptVector;
+                    if (vector == null && rr.route().isSemanticCacheEnabled() && semantic.enabled()) {
+                        vector = semantic.embed(spec.body().toString(), key);
+                    }
+                    cache.store(cacheKey, key.getId(), spec.publicModel(), rr.providerSlug(),
+                            rr.route(), "application/json", normalized.toString(), tokens, cost,
+                            semantic.encode(vector), vector == null ? null : semantic.model());
+                }
+                return new Result(normalized, rr.providerSlug(), rr.route().getUpstreamModelId(), cost,
+                        latency, cacheKey == null ? "off" : "miss");
 
             } catch (IOException e) {
+                breaker.onFailure(providerId);
+                metrics.recordFailure(rr.providerSlug(), spec.publicModel());
+                String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 lastError = ApiException.upstream(502,
-                        "Could not reach " + rr.providerSlug() + ": " + e.getMessage(), "upstream_network_error");
-                failures.add(rr.providerSlug() + ": " + e.getMessage());
+                        "Could not reach " + rr.providerSlug() + ": " + reason, "upstream_network_error");
+                failures.add(rr.providerSlug() + ": " + reason);
                 fallbackFrom = fallbackFrom == null ? rr.providerSlug() : fallbackFrom;
                 if (i == chain.size() - 1) {
                     break;
@@ -133,14 +225,32 @@ public class ChatService {
         usage.recordError(key, spec, null, null, elapsedMs(started), false, attempts,
                 lastError.code(), lastError.getMessage());
         throw lastError;
+        } finally {
+            creditGuard.release(key, reserved);
+        }
+    }
+
+    private static ResponseCacheService.Entry entryOf(
+            com.anindra.path.domain.ResponseCacheEntry record) {
+        return new ResponseCacheService.Entry(record.getContentType(), record.getBody(),
+                record.getProviderSlug(), record.getCostUsd(), record.getPromptTokens(),
+                record.getCompletionTokens(), record.getTotalTokens());
     }
 
     /** Used only when a provider returns no usage block at all. */
-    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized) {
-        int prompt = spec.estimatePromptTokens();
+    private static TokenUsage estimate(ChatRequestSpec spec, JsonNode normalized, String upstreamModel) {
+        int prompt = spec.estimatePromptTokens(upstreamModel);
         JsonNode content = normalized.path("choices").path(0).path("message").path("content");
         int completion = content.isTextual() ? Math.max(1, content.asText().length() / 4) : 0;
         return TokenUsage.estimated(prompt, completion);
+    }
+
+    private void recordBreakerFailure(Long providerId, UpstreamException failure) {
+        if (failure.status() == 429 && failure.retryAfterSeconds() > 0) {
+            breaker.onRateLimited(providerId, java.time.Duration.ofSeconds(failure.retryAfterSeconds()));
+        } else {
+            breaker.onFailure(providerId);
+        }
     }
 
     private ProviderAdapter adapterFor(Provider provider) {

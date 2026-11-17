@@ -7,6 +7,7 @@ import com.anindra.path.domain.Provider;
 import com.anindra.path.domain.ProviderType;
 import com.anindra.path.gateway.ApiKeyService;
 import com.anindra.path.gateway.ProviderCredentials;
+import com.anindra.path.gateway.ProviderCircuitBreaker;
 import com.anindra.path.gateway.UsageService;
 import com.anindra.path.repo.ClientKeyRepository;
 import com.anindra.path.repo.ModelRouteRepository;
@@ -32,9 +33,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminService {
 
+    private final com.anindra.path.gateway.RoutingMetrics routingMetrics;
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ProviderInput(String slug, @JsonAlias("displayName") String displayName, String type,
                                 @JsonAlias("baseUrl") String baseUrl, @JsonAlias("apiKey") String apiKey,
+                                @JsonAlias("apiVersion") String apiVersion,
+                                @JsonAlias("requestTimeoutMs") Integer requestTimeoutMs,
+                                @JsonAlias("streamIdleTimeoutMs") Integer streamIdleTimeoutMs,
                                 Boolean enabled) {
     }
 
@@ -47,15 +53,30 @@ public class AdminService {
                              @JsonAlias("cachedInputPricePerMillion") BigDecimal cachedInputPricePerMillion,
                              @JsonAlias("cacheWritePricePerMillion") BigDecimal cacheWritePricePerMillion,
                              Integer priority,
+                             Integer weight,
+                             @JsonAlias("cacheEnabled") Boolean cacheEnabled,
+                             @JsonAlias("cacheTtlSeconds") Integer cacheTtlSeconds,
+                             @JsonAlias("semanticCacheEnabled") Boolean semanticCacheEnabled,
+                             @JsonAlias("semanticThreshold") java.math.BigDecimal semanticThreshold,
                              @JsonAlias("contextLength") Integer contextLength,
                              @JsonAlias("supportsStreaming") Boolean supportsStreaming,
                              @JsonAlias("supportsTools") Boolean supportsTools,
+                             String strategy,
+                             @JsonAlias("latencySloMs") Integer latencySloMs,
                              Boolean enabled, String description) {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record KeyInput(String name, @JsonAlias("creditLimitUsd") BigDecimal creditLimitUsd,
-                           @JsonAlias("rpmLimit") Integer rpmLimit, Boolean enabled) {
+                           @JsonAlias("dailyLimitUsd") BigDecimal dailyLimitUsd,
+                           @JsonAlias("monthlyLimitUsd") BigDecimal monthlyLimitUsd,
+                           @JsonAlias("endUserDailyLimitUsd") BigDecimal endUserDailyLimitUsd,
+                           @JsonAlias("maxOutputTokens") Integer maxOutputTokens,
+                           @JsonAlias("rpmLimit") Integer rpmLimit,
+                           @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
+                           @JsonAlias("allowedModels") String allowedModels,
+                           @JsonAlias("projectId") Long projectId,
+                           Boolean enabled) {
     }
 
     private final ProviderRepository providers;
@@ -65,6 +86,7 @@ public class AdminService {
     private final ProviderCredentials credentials;
     private final ApiKeyService apiKeys;
     private final UsageService usage;
+    private final ProviderCircuitBreaker breaker;
 
     // -------------------------------------------------------------- providers
 
@@ -89,7 +111,10 @@ public class AdminService {
                 ? in.slug().trim() : in.displayName().trim());
         p.setType(parseType(in.type()));
         p.setBaseUrl(requireBaseUrl(in.baseUrl()));
+        p.setApiVersion(in.apiVersion() == null || in.apiVersion().isBlank() ? null : in.apiVersion().trim());
         p.setEnabled(in.enabled() == null || in.enabled());
+        p.setRequestTimeoutMs(in.requestTimeoutMs());
+        p.setStreamIdleTimeoutMs(in.streamIdleTimeoutMs());
         if (in.apiKey() != null && !in.apiKey().isBlank()) {
             p.setApiKeyCipher(cipher.encrypt(in.apiKey().trim()));
         }
@@ -110,8 +135,18 @@ public class AdminService {
         if (in.baseUrl() != null && !in.baseUrl().isBlank()) {
             p.setBaseUrl(requireBaseUrl(in.baseUrl()));
         }
+        if (in.apiVersion() != null) {
+            // Blank clears it: the provider goes back to the plain OpenAI shape.
+            p.setApiVersion(in.apiVersion().isBlank() ? null : in.apiVersion().trim());
+        }
         if (in.enabled() != null) {
             p.setEnabled(in.enabled());
+        }
+        if (in.requestTimeoutMs() != null) {
+            p.setRequestTimeoutMs(in.requestTimeoutMs());
+        }
+        if (in.streamIdleTimeoutMs() != null) {
+            p.setStreamIdleTimeoutMs(in.streamIdleTimeoutMs());
         }
         if (in.apiKey() != null) {
             p.setApiKeyCipher(in.apiKey().isBlank() ? null : cipher.encrypt(in.apiKey().trim()));
@@ -136,10 +171,15 @@ public class AdminService {
         view.put("display_name", p.getDisplayName());
         view.put("type", p.getType().name());
         view.put("base_url", p.getBaseUrl());
+        view.put("api_version", p.getApiVersion());
         view.put("enabled", p.isEnabled());
         view.put("credential_source", credentials.source(p));
         view.put("credential_configured", credentials.apiKey(p) != null);
         view.put("credential_hint", credentials.hint(p));
+        view.put("request_timeout_ms", p.getRequestTimeoutMs());
+        view.put("stream_idle_timeout_ms", p.getStreamIdleTimeoutMs());
+        view.put("circuit_state", breaker.state(p.getId()).name().toLowerCase());
+        view.put("circuit_retry_after_seconds", breaker.retryAfterSeconds(p.getId()));
         view.put("created_at", p.getCreatedAt().toString());
         view.put("route_count", routes.findByProviderId(p.getId()).size());
         return view;
@@ -165,6 +205,47 @@ public class AdminService {
             throw ApiException.badRequest("baseUrl must start with http:// or https://", "baseUrl");
         }
         return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+    }
+
+    // ------------------------------------------------------------ master key
+
+    /**
+     * Re-encrypts every stored provider credential under a new master key. All
+     * ciphertexts are written before the key is swapped, so a failure leaves the old
+     * key valid.
+     */
+    @Transactional
+    public Map<String, Object> rotateMasterKey(String newKeyBase64) {
+        byte[] newKey;
+        try {
+            newKey = SecretCipher.parseKey(newKeyBase64 == null ? "" : newKeyBase64);
+        } catch (Exception e) {
+            throw ApiException.badRequest(
+                    "new_key must be a base64 encoded 32-byte key (openssl rand -base64 32).",
+                    "new_key");
+        }
+
+        java.util.List<Provider> all = providers.findAll();
+        java.util.Map<Long, String> reencrypted = new java.util.LinkedHashMap<>();
+        for (Provider provider : all) {
+            if (provider.getApiKeyCipher() == null || provider.getApiKeyCipher().isBlank()) {
+                continue;
+            }
+            String plaintext = cipher.decrypt(provider.getApiKeyCipher());
+            reencrypted.put(provider.getId(), SecretCipher.encryptWith(newKey, plaintext));
+        }
+
+        for (var entry : reencrypted.entrySet()) {
+            providers.findById(entry.getKey()).ifPresent(p -> p.setApiKeyCipher(entry.getValue()));
+        }
+        providers.flush();
+        cipher.rotate(newKey);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rotated", reencrypted.size());
+        out.put("providers", all.size());
+        out.put("note", "Update GATEWAY_MASTER_KEY before the next restart.");
+        return out;
     }
 
     // ----------------------------------------------------------------- routes
@@ -244,9 +325,45 @@ public class AdminService {
         return routeView(route, slug);
     }
 
+    /** Unknown strategies are a 400, not a silent fallback to priority. */
+    private static String validateStrategy(String strategy) {
+        String value = strategy.trim().toLowerCase();
+        if (!java.util.Set.of("priority", "fastest", "cheapest-viable").contains(value)) {
+            throw ApiException.badRequest(
+                    "'strategy' must be one of priority, fastest, cheapest-viable.", "strategy");
+        }
+        return value;
+    }
+
     private static void applyOptionals(ModelRoute route, RouteInput in) {
         if (in.priority() != null) {
             route.setPriority(in.priority());
+        }
+        if (in.weight() != null) {
+            route.setWeight(in.weight());
+        }
+        if (in.strategy() != null) {
+            route.setStrategy(validateStrategy(in.strategy()));
+        }
+        if (in.latencySloMs() != null) {
+            route.setLatencySloMs(in.latencySloMs());
+        }
+        if (in.cacheEnabled() != null) {
+            route.setCacheEnabled(in.cacheEnabled());
+        }
+        if (in.cacheTtlSeconds() != null) {
+            route.setCacheTtlSeconds(in.cacheTtlSeconds());
+        }
+        if (in.semanticCacheEnabled() != null) {
+            route.setSemanticCacheEnabled(in.semanticCacheEnabled());
+        }
+        if (in.semanticThreshold() != null) {
+            double threshold = in.semanticThreshold().doubleValue();
+            if (threshold < 0.5 || threshold > 1.0) {
+                throw ApiException.badRequest(
+                        "'semantic_threshold' must be between 0.5 and 1.0.", "semantic_threshold");
+            }
+            route.setSemanticThreshold(in.semanticThreshold());
         }
         if (in.contextLength() != null) {
             route.setContextLength(in.contextLength());
@@ -289,21 +406,44 @@ public class AdminService {
         view.put("supports_streaming", r.isSupportsStreaming());
         view.put("supports_tools", r.isSupportsTools());
         view.put("enabled", r.isEnabled());
+        view.put("weight", r.getWeight());
+        view.put("semantic_cache_enabled", r.isSemanticCacheEnabled());
+        view.put("semantic_threshold", r.getSemanticThreshold());
+        view.put("strategy", r.getStrategy());
+        double ewma = routingMetrics.latencyMs(providerSlug, r.getPublicModelId());
+        view.put("ewma_latency_ms", Double.isNaN(ewma) ? null : Math.round(ewma));
+        view.put("ewma_error_rate", routingMetrics.errorRate(providerSlug, r.getPublicModelId()));
+        view.put("latency_slo_ms", r.getLatencySloMs());
+        view.put("cache_enabled", r.isCacheEnabled());
+        view.put("cache_ttl_seconds", r.getCacheTtlSeconds());
         view.put("description", r.getDescription());
         return view;
     }
 
     // ------------------------------------------------------------------- keys
 
-    public List<Map<String, Object>> listKeys() {
+    public List<Map<String, Object>> listKeys(Long projectId) {
         List<Map<String, Object>> out = new ArrayList<>();
-        clientKeys.findAllByOrderByCreatedAtDesc().forEach(k -> out.add(keyView(k)));
+        var found = projectId == null
+                ? clientKeys.findAllByOrderByCreatedAtDesc()
+                : clientKeys.findByProjectIdOrderByCreatedAtDesc(projectId);
+        found.forEach(k -> out.add(keyView(k)));
         return out;
     }
 
     @Transactional
     public Map<String, Object> createKey(KeyInput in) {
         ApiKeyService.CreatedKey created = apiKeys.create(in.name(), in.creditLimitUsd(), in.rpmLimit());
+        if (in.maxConcurrentRequests() != null) {
+            created.key().setMaxConcurrentRequests(in.maxConcurrentRequests());
+        }
+        created.key().setDailyLimitUsd(in.dailyLimitUsd());
+        created.key().setMonthlyLimitUsd(in.monthlyLimitUsd());
+        created.key().setMaxOutputTokens(in.maxOutputTokens());
+        created.key().setAllowedModels(in.allowedModels());
+        created.key().setEndUserDailyLimitUsd(in.endUserDailyLimitUsd());
+        created.key().setProjectId(in.projectId());
+        clientKeys.save(created.key());
         Map<String, Object> view = keyView(created.key());
         view.put("key", created.plaintext());
         view.put("warning", "Store this key now. It is not shown again.");
@@ -325,6 +465,30 @@ public class AdminService {
                 throw ApiException.badRequest("rpmLimit must be at least 1", "rpmLimit");
             }
             key.setRpmLimit(in.rpmLimit());
+        }
+        if (in.maxConcurrentRequests() != null) {
+            if (in.maxConcurrentRequests() < 0) {
+                throw ApiException.badRequest("maxConcurrentRequests cannot be negative", "maxConcurrentRequests");
+            }
+            key.setMaxConcurrentRequests(in.maxConcurrentRequests());
+        }
+        if (in.dailyLimitUsd() != null) {
+            key.setDailyLimitUsd(in.dailyLimitUsd());
+        }
+        if (in.monthlyLimitUsd() != null) {
+            key.setMonthlyLimitUsd(in.monthlyLimitUsd());
+        }
+        if (in.endUserDailyLimitUsd() != null) {
+            key.setEndUserDailyLimitUsd(in.endUserDailyLimitUsd());
+        }
+        if (in.maxOutputTokens() != null) {
+            key.setMaxOutputTokens(in.maxOutputTokens());
+        }
+        if (in.allowedModels() != null) {
+            key.setAllowedModels(in.allowedModels());
+        }
+        if (in.projectId() != null) {
+            key.setProjectId(in.projectId());
         }
         if (in.enabled() != null) {
             key.setEnabled(in.enabled());
@@ -365,6 +529,13 @@ public class AdminService {
         view.put("masked_key", k.getKeyPrefix() + "..." + k.getKeySuffix());
         view.put("enabled", k.isEnabled());
         view.put("rpm_limit", k.getRpmLimit());
+        view.put("max_concurrent_requests", k.getMaxConcurrentRequests());
+        view.put("daily_limit_usd", k.getDailyLimitUsd());
+        view.put("monthly_limit_usd", k.getMonthlyLimitUsd());
+        view.put("end_user_daily_limit_usd", k.getEndUserDailyLimitUsd());
+        view.put("max_output_tokens", k.getMaxOutputTokens());
+        view.put("allowed_models", k.getAllowedModels());
+        view.put("project_id", k.getProjectId());
         view.put("credit_limit_usd", k.getCreditLimitUsd());
         view.put("used_usd", k.getUsedUsd());
         view.put("created_at", k.getCreatedAt().toString());

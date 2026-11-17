@@ -15,15 +15,42 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     List<UsageRecord> findByCreatedAtAfterOrderByCreatedAtDesc(Instant from, Pageable pageable);
 
+    List<UsageRecord> findByCreatedAtBetweenOrderByCreatedAtAsc(Instant from, Instant to, Pageable pageable);
+
+    List<UsageRecord> findByClientKeyIdInAndCreatedAtAfterOrderByCreatedAtDesc(
+            java.util.Collection<Long> keyIds, Instant from, Pageable pageable);
+
+    List<UsageRecord> findByClientKeyIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
+            java.util.Collection<Long> keyIds, Instant from, Instant to, Pageable pageable);
+
     long countByCreatedAtAfter(Instant from);
 
+    long deleteByCreatedAtBefore(Instant cutoff);
+
     long countByClientKeyIdAndCreatedAtAfter(Long clientKeyId, Instant from);
+
+    @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.clientKeyId in (select k.id from ClientKey k where k.projectId = :projectId) "
+            + "and u.createdAt >= :from")
+    BigDecimal sumCostForProjectSince(Long projectId, Instant from);
 
     @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u where u.createdAt >= :from")
     BigDecimal sumCostSince(Instant from);
 
     @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from")
     BigDecimal sumCostForKeySince(Long keyId, Instant from);
+
+    @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.clientKeyId = :keyId and u.endUser = :endUser and u.createdAt >= :from")
+    BigDecimal sumCostForKeyAndEndUserSince(Long keyId, String endUser, Instant from);
+
+    @Query("select u.endUser, count(u), coalesce(sum(u.totalTokens), 0), coalesce(sum(u.costUsd), 0) "
+            + "from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from "
+            + "and u.endUser is not null group by u.endUser order by sum(u.costUsd) desc")
+    List<Object[]> groupByEndUserSince(Long keyId, Instant from);
+
+    List<UsageRecord> findByClientKeyIdAndEndUserOrderByCreatedAtDesc(
+            Long clientKeyId, String endUser, Pageable pageable);
 
     @Query("select coalesce(sum(u.promptTokens), 0) from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from")
     Long sumPromptTokensForKeySince(Long keyId, Instant from);

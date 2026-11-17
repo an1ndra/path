@@ -1,0 +1,23 @@
+meta {
+  name: Update provider
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/admin/providers/{{createdProviderId}}
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "display_name": "Bruno test (updated)",
+    "enabled": true
+  }
+}

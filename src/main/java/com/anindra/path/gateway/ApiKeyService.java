@@ -5,6 +5,8 @@ import com.anindra.path.config.GatewayProperties;
 import com.anindra.path.domain.ClientKey;
 import com.anindra.path.repo.ClientKeyRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ApiKeyService {
 
     private static final String PREFIX = "sk-gw-";
@@ -92,11 +95,38 @@ public class ApiKeyService {
         });
     }
 
+    /** @return true when the reservation was granted. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean reserve(Long keyId, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            return true;
+        }
+        return keys.reserve(keyId, amount, Instant.now()) > 0;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void release(Long keyId, BigDecimal amount) {
+        if (amount != null && amount.signum() > 0) {
+            keys.release(keyId, amount);
+        }
+    }
+
+    /** Frees reservations left behind by a crashed instance. */
+    @Scheduled(fixedDelay = 300_000)
+    @Transactional
+    void releaseStaleReservations() {
+        int released = keys.releaseStale(Instant.now().minusSeconds(900));
+        if (released > 0) {
+            log.info("Released stale budget reservations on {} key(s)", released);
+        }
+    }
+
     public BigDecimal remaining(ClientKey key) {
         if (key.getCreditLimitUsd() == null) {
             return null;
         }
-        return key.getCreditLimitUsd().subtract(key.getUsedUsd());
+        BigDecimal reserved = key.getReservedUsd() == null ? BigDecimal.ZERO : key.getReservedUsd();
+        return key.getCreditLimitUsd().subtract(key.getUsedUsd()).subtract(reserved);
     }
 
     public static String hash(String raw) {

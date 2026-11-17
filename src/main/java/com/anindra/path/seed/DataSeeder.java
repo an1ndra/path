@@ -33,6 +33,9 @@ public class DataSeeder implements ApplicationRunner {
     private final ClientKeyRepository clientKeys;
     private final ApiKeyService apiKeys;
     private final GatewayProperties props;
+    private final SeedState seedState;
+    private final com.anindra.path.repo.ProjectRepository projectsRepository;
+    private final org.springframework.core.env.Environment environment;
 
     @Override
     @Transactional
@@ -42,10 +45,17 @@ public class DataSeeder implements ApplicationRunner {
         if (fresh && routes.count() == 0) {
             seedRoutes(bySlug);
         }
-        if (props.isBootstrapDemoKey() && clientKeys.count() == 0) {
+        if (projectsRepository.count() == 0) {
+            projectsRepository.save(new com.anindra.path.domain.Project("default", "Default project"));
+        }
+        boolean prod = environment.acceptsProfiles(org.springframework.core.env.Profiles.of("prod"));
+        if (props.isBootstrapDemoKey() && !prod && clientKeys.count() == 0) {
             var created = apiKeys.create("demo-local", null, props.getDefaultRpmLimit());
             log.info("Created demo API key (no credit limit): {}", created.plaintext());
+        } else if (prod && props.isBootstrapDemoKey()) {
+            log.warn("Ignoring gateway.bootstrap-demo-key in the prod profile; no demo key created.");
         }
+        seedState.markReady();
         log.info("Gateway ready. Admin API: {}  |  Public API: /v1/chat/completions, /v1/models",
                 props.getAdminToken() == null || props.getAdminToken().isBlank()
                         ? "disabled (set GATEWAY_ADMIN_TOKEN)"
@@ -60,6 +70,9 @@ public class DataSeeder implements ApplicationRunner {
                 new Provider("anthropic", "Anthropic", ProviderType.ANTHROPIC, "https://api.anthropic.com/v1"))));
         bySlug.put("groq", providers.findBySlug("groq").orElseGet(() -> providers.save(
                 new Provider("groq", "Groq", ProviderType.OPENAI, "https://api.groq.com/openai/v1"))));
+        bySlug.put("gemini", providers.findBySlug("gemini").orElseGet(() -> providers.save(
+                new Provider("gemini", "Google Gemini", ProviderType.OPENAI,
+                        "https://generativelanguage.googleapis.com/v1beta/openai"))));
         return bySlug;
     }
 

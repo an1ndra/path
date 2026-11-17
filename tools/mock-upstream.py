@@ -13,11 +13,31 @@ Behaviour switches are driven by the upstream model id in the request body:
   * "empty"       -> stream sends nothing then closes
 """
 import json
+import math
+import re
+import zlib
+import urllib.parse
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9099
+
+
+def _embedding(text, dims=32):
+    """Deterministic bag-of-words vector, so near-duplicate prompts are near in cosine.
+
+    Not a real embedding model — the point is stable, testable geometry: sharing words
+    raises the cosine, sharing none leaves it near zero.
+    """
+    vector = [0.0] * dims
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    for word in words:
+        vector[zlib.crc32(word.encode()) % dims] += 1.0
+    norm = math.sqrt(sum(v * v for v in vector))
+    if norm == 0:
+        return vector
+    return [round(v / norm, 6) for v in vector]
 
 
 def openai_body(model, prompt_tokens=11, completion_tokens=7):
@@ -81,6 +101,7 @@ class Handler(BaseHTTPRequestHandler):
                 {"id": "text-embedding-3-small", "object": "model"},
                 {"id": "claude-3-5-haiku-latest", "object": "model"},
                 {"id": "llama-3.3-70b-versatile", "object": "model"},
+                {"id": "acme-unknown-model", "object": "model"},
             ]
             self._json(200, {"object": "list", "data": data})
         else:
@@ -89,6 +110,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self._read()
         model = str(body.get("model", ""))
+        # Azure puts the version in a query string, so suffix checks need the bare path.
+        route = urllib.parse.urlparse(self.path).path
+
+        # Azure shape: /openai/deployments/<name>/chat/completions?api-version=...
+        if "/openai/deployments/" in route:
+            query = urllib.parse.urlparse(self.path).query
+            version = urllib.parse.parse_qs(query).get("api-version", [""])[0]
+            if version != "2024-10-21" and "/moderations" not in route:
+                self._json(400, {"error": {
+                    "message": "API version not supported: " + (version or "(none)"),
+                    "type": "invalid_request_error", "code": "invalid_api_version"}})
+                return
+            if not self.headers.get("api-key"):
+                self._json(401, {"error": {"message": "missing api-key", "code": "401"}})
+                return
         stream = bool(body.get("stream"))
 
         if "boom" in model:
@@ -104,7 +140,27 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "bad request from client", "type": "invalid_request"}})
             return
 
-        if self.path.endswith("/messages"):
+        if route.endswith("/moderations"):
+            text = str(body.get("input", ""))
+            flagged = "flag-me" in text
+            self._json(200, {"id": "modr-mock", "model": body.get("model"),
+                             "results": [{"flagged": flagged, "categories": {
+                                 "violence": flagged, "harassment": False,
+                                 "hate": False, "self-harm": False}}]})
+            return
+
+        if route.endswith("/embeddings"):
+            text = body.get("input")
+            if isinstance(text, list):
+                text = " ".join(str(t) for t in text)
+            self._json(200, {
+                "object": "list",
+                "data": [{"object": "embedding", "index": 0,
+                          "embedding": _embedding(str(text or ""))}],
+                "model": model,
+                "usage": {"prompt_tokens": 7, "total_tokens": 7},
+            })
+        elif route.endswith("/messages"):
             self._anthropic(model, stream)
         else:
             self._openai(model, stream)

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: path
+description: Path — a provider-agnostic LLM gateway with routing, fallback, credits and cache-aware token metering
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/an1ndra/path
+sources:
+  - https://github.com/an1ndra/path
+keywords:
+  - llm
+  - gateway
+  - openai
+  - anthropic
+  - java

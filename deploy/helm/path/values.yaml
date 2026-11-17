@@ -1,0 +1,117 @@
+# Defaults for Path. Every knob that changes behaviour is commented with the trade-off.
+
+image:
+  repository: ghcr.io/an1ndra/path
+  # Defaults to the chart's appVersion when left empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+
+# Path drains in-flight streams on SIGTERM instead of truncating them, so the grace
+# period MUST be longer than drainTimeoutSeconds. The template refuses to render
+# otherwise; that check is the point of this pair.
+terminationGracePeriodSeconds: 45
+drainTimeoutSeconds: 25
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Secrets are never rendered inline by default: point existingSecret at a Secret you
+# manage (External Secrets, Sealed Secrets, Vault) with these keys.
+#
+#   GATEWAY_ADMIN_TOKEN   admin API token
+#   GATEWAY_MASTER_KEY    base64 32-byte key encrypting provider credentials
+#   OPENAI_API_KEY        optional provider credentials
+#   ANTHROPIC_API_KEY
+#   GROQ_API_KEY
+#   GEMINI_API_KEY
+#   GATEWAY_UPASTASH_TOKEN ...
+existingSecret: ""
+
+# Only for a throwaway install. Prefer existingSecret.
+secrets: {}
+
+env:
+  # Any extra environment variable, e.g. GATEWAY_API_DOCS: "false"
+  GATEWAY_API_DOCS: "false"
+  GATEWAY_RATE_LIMIT_BACKEND: "memory"
+
+config:
+  # Path stores its own data in H2 by default; production wants Postgres.
+  profile: postgres
+  dbUrl: jdbc:postgresql://postgres:5432/aigateway
+  dbUser: aigateway
+  dbPasswordSecretKey: DB_PASSWORD
+
+# Optional in-chart Postgres. Off by default: an operator-managed database is better.
+postgres:
+  enabled: false
+  image: postgres:16-alpine
+  database: aigateway
+  username: aigateway
+  password: aigateway
+  persistence:
+    size: 10Gi
+
+# Optional in-chart Valkey (Redis protocol), needed for shared rate limiting across
+# replicas and for a shared circuit breaker.
+valkey:
+  enabled: false
+  image: valkey/valkey:8-alpine
+  resources: {}
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+probes:
+  startup:
+    failureThreshold: 30
+    periodSeconds: 5
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+
+# Path is I/O bound, so CPU is a poor scaling signal. The HPA defaults to memory
+# without a custom metric; point metrics.custom at the Prometheus adapter when
+# available (path_requests_total or in-flight requests).
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  metrics: []
+  # - type: Pods
+  #   pods:
+  #     metric: { name: path_in_flight_requests }
+  #     target: { type: AverageValue, averageValue: "20" }
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}

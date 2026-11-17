@@ -1,0 +1,14 @@
+meta {
+  name: Delete route
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/admin/routes/{{createdRouteId}}
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

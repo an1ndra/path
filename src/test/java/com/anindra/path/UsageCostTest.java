@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class UsageCostTest {
 
-    private final UsageService service = new UsageService(null, null);
+    private final UsageService service = new UsageService(null, null, new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), new com.anindra.path.config.GatewayProperties());
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static ModelRoute route(String input, String cached, String output, String write) {
@@ -71,7 +71,7 @@ class UsageCostTest {
 
     @Test
     void openAiUsageParsesCacheAndReasoningDetails() throws Exception {
-        OpenAiAdapter adapter = new OpenAiAdapter(mapper);
+        OpenAiCompatibleAdapter adapter = new OpenAiCompatibleAdapter(mapper);
         JsonNode upstream = mapper.readTree("""
                 {"usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120,
                            "prompt_tokens_details": {"cached_tokens": 40},
@@ -90,7 +90,7 @@ class UsageCostTest {
 
     @Test
     void missingUsageIsReportedAsEmpty() throws Exception {
-        OpenAiAdapter adapter = new OpenAiAdapter(mapper);
+        OpenAiCompatibleAdapter adapter = new OpenAiCompatibleAdapter(mapper);
         TokenUsage usage = adapter.parseUsage(mapper.readTree("{\"choices\":[]}"));
         assertThat(usage.reported()).isFalse();
     }

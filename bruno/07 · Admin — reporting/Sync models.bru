@@ -1,0 +1,14 @@
+meta {
+  name: Sync models
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/admin/models/sync
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}

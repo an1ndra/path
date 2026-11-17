@@ -1,0 +1,18 @@
+meta {
+  name: Revoke key
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/admin/keys/{{keyId}}/revoke
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}
+
+docs {
+  Run last: the setup key stops working after this.
+}

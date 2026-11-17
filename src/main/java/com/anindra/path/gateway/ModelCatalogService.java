@@ -26,6 +26,8 @@ public class ModelCatalogService {
 
     private final ModelRouteRepository routes;
     private final ProviderRepository providers;
+    private final ModelAliasService aliases;
+    private final com.anindra.path.admin.AliasService operatorAliases;
 
     public Map<String, Object> list() {
         Map<Long, Provider> byId = providers.findAll().stream()
@@ -43,6 +45,19 @@ public class ModelCatalogService {
         List<Map<String, Object>> data = new ArrayList<>();
         grouped.forEach((modelId, modelRoutes) -> data.add(describe(modelId, modelRoutes, byId)));
 
+        data.addAll(aliases.describeAll());
+        operatorAliases.list().forEach(alias -> {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id", alias.get("alias"));
+            entry.put("object", "model");
+            entry.put("owned_by", "path");
+            entry.put("resolves_to", alias.get("resolves_to"));
+            entry.put("models", alias.get("models"));
+            entry.put("description", alias.get("description") == null
+                    ? "Operator-defined alias" : alias.get("description"));
+            data.add(entry);
+        });
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("object", "list");
         out.put("data", data);
@@ -50,6 +65,14 @@ public class ModelCatalogService {
     }
 
     public Optional<Map<String, Object>> find(String modelId) {
+        if (operatorAliases.exists(modelId)) {
+            List<String> chain = operatorAliases.chainFor(modelId);
+            return chain.isEmpty() ? Optional.empty() : find(chain.get(0));
+        }
+        if (aliases.isAlias(modelId)) {
+            return aliases.resolve(modelId).flatMap(this::find).or(() ->
+                    Optional.of(resolveAliasEntry(modelId)));
+        }
         List<ModelRoute> modelRoutes = routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(modelId);
         if (modelRoutes.isEmpty()) {
             return Optional.empty();
@@ -57,6 +80,15 @@ public class ModelCatalogService {
         Map<Long, Provider> byId = providers.findAll().stream()
                 .collect(Collectors.toMap(Provider::getId, Function.identity()));
         return Optional.of(describe(modelId, modelRoutes, byId));
+    }
+
+    private Map<String, Object> resolveAliasEntry(String alias) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", alias);
+        entry.put("object", "model");
+        entry.put("owned_by", "path");
+        entry.put("resolves_to", null);
+        return entry;
     }
 
     private Map<String, Object> describe(String modelId, List<ModelRoute> modelRoutes,

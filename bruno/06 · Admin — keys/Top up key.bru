@@ -1,0 +1,22 @@
+meta {
+  name: Top up key
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/admin/keys/{{keyId}}/topup
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "amount_usd": 5
+  }
+}

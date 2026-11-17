@@ -1,0 +1,31 @@
+meta {
+  name: Create route
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/admin/routes
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "public_model_id": "postman-route-bruno-demo",
+    "provider_id": "{{providerId}}",
+    "upstream_model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "input_price_per_million": 0.11,
+    "output_price_per_million": 0.34,
+    "priority": 1
+  }
+}
+
+script:post-response {
+  bru.setVar("createdRouteId", res.body.id);
+}

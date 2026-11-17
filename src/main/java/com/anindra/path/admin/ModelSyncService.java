@@ -131,7 +131,10 @@ public class ModelSyncService {
                         route.setCachedInputPricePerMillion(price.cached());
                         route.setCacheWritePricePerMillion(price.write());
                     } else {
-                        route.setDescription("Imported by /admin/models/sync; set a price before use.");
+                        // Never publish an unpriced model: it would serve traffic for free.
+                        route.setEnabled(false);
+                        route.setDescription("Imported by /admin/models/sync with no known price; "
+                                + "set a price and enable it.");
                     }
                     routes.save(route);
                     created++;

@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
@@ -40,39 +42,70 @@ public class StreamService {
     private final UpstreamClient upstream;
     private final UsageService usage;
     private final CreditGuard creditGuard;
+    private final ProviderCircuitBreaker breaker;
+    private final RoutingMetrics metrics;
+    private final ResponseCacheService cache;
     private final ObjectMapper mapper;
     private final GatewayProperties props;
     private final Map<ProviderType, ProviderAdapter> adapters = new EnumMap<>(ProviderType.class);
 
     public StreamService(RouteResolver resolver, ProviderCredentials credentials, UpstreamClient upstream,
-                         UsageService usage, CreditGuard creditGuard, ObjectMapper mapper,
+                         UsageService usage, CreditGuard creditGuard, ProviderCircuitBreaker breaker,
+                         RoutingMetrics metrics, ResponseCacheService cache, ObjectMapper mapper,
                          GatewayProperties props, List<ProviderAdapter> adapterList) {
         this.resolver = resolver;
         this.credentials = credentials;
         this.upstream = upstream;
         this.usage = usage;
         this.creditGuard = creditGuard;
+        this.breaker = breaker;
+        this.metrics = metrics;
+        this.cache = cache;
         this.mapper = mapper;
         this.props = props;
         adapterList.forEach(a -> adapters.put(a.type(), a));
     }
 
+    /** Route chain plus the budget reserved for it; release the reservation when done. */
+    public record Prepared(List<RouteResolver.ResolvedRoute> chain,
+                           CreditGuard.Reservation reservation) {
+    }
+
     /** Resolve the fallback chain and authorise spend. Throws before any bytes are sent. */
-    public List<RouteResolver.ResolvedRoute> prepare(ChatRequestSpec spec, ClientKey key) {
-        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec);
-        creditGuard.check(key, spec, chain.get(0));
-        return chain;
+    public Prepared prepare(ChatRequestSpec spec, ClientKey key) {
+        List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
+        CreditGuard.Reservation reserved = creditGuard.check(key, spec, chain.get(0));
+        return new Prepared(chain, reserved);
     }
 
     /** Blocks for the whole stream. Safe on a virtual thread. */
-    public void stream(HttpServletResponse response, ChatRequestSpec spec, ClientKey key,
-                       List<RouteResolver.ResolvedRoute> chain) throws IOException {
+    public boolean stream(HttpServletResponse response, ChatRequestSpec spec, ClientKey key,
+                          List<RouteResolver.ResolvedRoute> chain) throws IOException {
         response.setStatus(200);
         response.setContentType("text/event-stream;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-transform");
         response.setHeader("Connection", "keep-alive");
         response.setHeader("X-Accel-Buffering", "no");
-        OutputStream out = response.getOutputStream();
+
+        boolean cacheEligible = ResponseCacheService.eligible(spec, chain.get(0).route());
+        String cacheKey = cacheEligible
+                ? cache.key(key.getId(), spec.publicModel(), spec.body().toString()) : null;
+        if (cacheKey != null) {
+            var hit = cache.lookup(cacheKey);
+            if (hit.isPresent()) {
+                response.setHeader("X-Path-Cache", "hit");
+                OutputStream cached = response.getOutputStream();
+                cached.write(hit.get().body().getBytes(StandardCharsets.UTF_8));
+                cached.flush();
+                usage.recordCacheHit(key, spec, chain.get(0), hit.get(), true);
+                return true;
+            }
+        }
+        response.setHeader("X-Path-Cache", cacheEligible ? "miss" : "off");
+
+        OutputStream raw = response.getOutputStream();
+        Tee tee = cacheEligible ? new Tee(raw, props.getCache().getMaxBodyBytes()) : null;
+        OutputStream out = tee == null ? raw : tee;
         out.write(": open\n\n".getBytes(StandardCharsets.UTF_8));
         out.flush();
 
@@ -85,11 +118,23 @@ public class StreamService {
         String requestId = null;
         String finishReason = null;
         int generatedChars = 0;
+        long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
+        int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
 
-        for (int i = 0; i < chain.size(); i++) {
+        for (int i = 0; i < chain.size() && attempts < maxAttempts; i++) {
             RouteResolver.ResolvedRoute rr = chain.get(i);
             Provider provider = rr.provider();
             ProviderAdapter adapter = adapters.get(provider.getType());
+            Long providerId = provider.getId();
+
+            if (available > 0 && !breaker.isAvailable(providerId)) {
+                lastError = new ApiException(503, "upstream_error", "circuit_open",
+                        "Provider '" + provider.getSlug() + "' is temporarily unavailable.");
+                failures.add(provider.getSlug() + ": circuit open");
+                fallbackFrom = fallbackFrom == null ? provider.getSlug() : fallbackFrom;
+                continue;
+            }
+
             attempts++;
 
             if (adapter == null) {
@@ -121,8 +166,11 @@ public class StreamService {
                             stream.headers().get("openai-request-id"));
                 }
 
+                Duration idleTimeout = provider.getStreamIdleTimeoutMs() != null
+                        ? Duration.ofMillis(provider.getStreamIdleTimeoutMs())
+                        : props.getStreamIdleTimeout();
                 while (true) {
-                    String line = stream.poll(props.getStreamIdleTimeout());
+                    String line = stream.poll(idleTimeout);
                     if (line == null) {
                         break;
                     }
@@ -153,7 +201,8 @@ public class StreamService {
 
                 TokenUsage tokens = translator.usage();
                 if (!tokens.reported()) {
-                    tokens = TokenUsage.estimated(spec.estimatePromptTokens(),
+                    tokens = TokenUsage.estimated(
+                            spec.estimatePromptTokens(rr.route().getUpstreamModelId()),
                             Math.max(1, generatedChars / 4));
                 }
                 if (spec.includeUsage() && tokens.reported()) {
@@ -168,9 +217,23 @@ public class StreamService {
                 log.info("stream ok model={} provider={} tokens={} cached={} cost={} ttft={}ms latency={}ms",
                         spec.publicModel(), provider.getSlug(), tokens.total(), tokens.cached(),
                         cost.toPlainString(), ttftMs, latency);
-                return;
+                breaker.onSuccess(providerId);
+                metrics.recordSuccess(provider.getSlug(), spec.publicModel(), latency);
+                if (tee != null && cacheKey != null && !tee.overflowed()) {
+                    cache.store(cacheKey, key.getId(), spec.publicModel(), provider.getSlug(),
+                            rr.route(), "text/event-stream", tee.body(), tokens, cost);
+                }
+                return true;
 
             } catch (UpstreamException e) {
+                metrics.recordFailure(provider.getSlug(), spec.publicModel());
+                if (e.retryable()) {
+                    if (e.status() == 429 && e.retryAfterSeconds() > 0) {
+                        breaker.onRateLimited(providerId, java.time.Duration.ofSeconds(e.retryAfterSeconds()));
+                    } else {
+                        breaker.onFailure(providerId);
+                    }
+                }
                 lastError = ChatService.toApiException(e);
                 if (!committed && e.retryable() && i < chain.size() - 1) {
                     log.warn("Stream route {} failed before first chunk ({}), trying next",
@@ -182,11 +245,14 @@ public class StreamService {
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
                         ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
-                return;
+                return false;
 
             } catch (TimeoutException e) {
+                breaker.onFailure(providerId);
                 lastError = new ApiException(504, "upstream_error", "upstream_timeout",
-                        "The upstream sent nothing for " + props.getStreamIdleTimeout().toSeconds() + "s.");
+                        "The upstream sent nothing for " + (provider.getStreamIdleTimeoutMs() != null
+                                ? provider.getStreamIdleTimeoutMs() / 1000 + "s"
+                                : props.getStreamIdleTimeout().toSeconds() + "s") + ".");
                 if (!committed && i < chain.size() - 1) {
                     failures.add(provider.getSlug() + ": idle timeout");
                     fallbackFrom = fallbackFrom == null ? provider.getSlug() : fallbackFrom;
@@ -195,9 +261,10 @@ public class StreamService {
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
                         ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
-                return;
+                return false;
 
             } catch (IOException e) {
+                breaker.onFailure(providerId);
                 if (!committed) {
                     lastError = ApiException.upstream(502,
                             "Could not reach " + provider.getSlug() + ": " + e.getMessage(),
@@ -218,11 +285,11 @@ public class StreamService {
                 } catch (IOException clientGone) {
                     log.debug("Client disconnected after upstream failure");
                 }
-                return;
+                return false;
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
 
             } finally {
                 if (stream != null) {
@@ -240,6 +307,62 @@ public class StreamService {
         usage.recordError(key, spec, null, null, ChatService.elapsedMs(started), true, attempts,
                 lastError.code(), lastError.getMessage());
         emitError(out, lastError);
+        return false;
+    }
+
+    /** Writes through while capturing the SSE payload for the response cache. */
+    private static final class Tee extends OutputStream {
+
+        private final OutputStream delegate;
+        private final StringBuilder captured = new StringBuilder();
+        private final int maxBytes;
+        private boolean overflow;
+
+        private Tee(OutputStream delegate, int maxBytes) {
+            this.delegate = delegate;
+            this.maxBytes = maxBytes;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            delegate.write(b);
+            append(new byte[]{(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.write(b, off, len);
+            append(b, off, len);
+        }
+
+        private void append(byte[] b, int off, int len) {
+            if (overflow) {
+                return;
+            }
+            if (captured.length() + len > maxBytes) {
+                overflow = true;
+                return;
+            }
+            captured.append(new String(b, off, len, StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+
+        private boolean overflowed() {
+            return overflow;
+        }
+
+        private String body() {
+            return captured.toString();
+        }
     }
 
     private void send(OutputStream out, String data) throws IOException {

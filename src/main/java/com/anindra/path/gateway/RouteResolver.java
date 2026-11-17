@@ -26,8 +26,94 @@ public class RouteResolver {
 
     private final ModelRouteRepository routes;
     private final ProviderRepository providers;
+    private final ModelAliasService aliases;
+    private final com.anindra.path.admin.AliasService operatorAliases;
+    private final RoutingMetrics metrics;
 
     public List<ResolvedRoute> resolve(ChatRequestSpec spec) {
+        return resolve(spec, null);
+    }
+
+    /**
+     * Reorders a resolved group by the route's strategy. The declared priority is still
+     * the default and the fallback spine: this only changes which route is tried first.
+     */
+    private List<ResolvedRoute> adaptive(List<ResolvedRoute> group, String publicModel) {
+        if (group.size() < 2) {
+            return group;
+        }
+        String strategy = group.get(0).route().getStrategy();
+        if (strategy == null || "priority".equalsIgnoreCase(strategy)) {
+            return group;
+        }
+
+        java.util.Comparator<ResolvedRoute> byLatency = java.util.Comparator.comparingDouble(
+                r -> {
+                    double ewma = metrics.latencyMs(r.providerSlug(), publicModel);
+                    return Double.isNaN(ewma) ? Double.MAX_VALUE : ewma;
+                });
+        java.util.Comparator<ResolvedRoute> byPrice = java.util.Comparator.comparing(
+                r -> r.route().getInputPricePerMillion() == null
+                        ? new java.math.BigDecimal("999999")
+                        : r.route().getInputPricePerMillion());
+        java.util.Comparator<ResolvedRoute> byPriority =
+                java.util.Comparator.comparingInt(r -> r.route().getPriority());
+
+        List<ResolvedRoute> ordered = new ArrayList<>(group);
+        if ("fastest".equalsIgnoreCase(strategy)) {
+            ordered.sort(byLatency.thenComparing(byPrice).thenComparing(byPriority));
+            return ordered;
+        }
+        if ("cheapest-viable".equalsIgnoreCase(strategy)) {
+            Integer slo = group.get(0).route().getLatencySloMs();
+            if (slo == null || slo <= 0) {
+                ordered.sort(byPrice.thenComparing(byPriority));
+                return ordered;
+            }
+            List<ResolvedRoute> viable = new ArrayList<>();
+            List<ResolvedRoute> tooSlow = new ArrayList<>();
+            for (ResolvedRoute route : ordered) {
+                double ewma = metrics.latencyMs(route.providerSlug(), publicModel);
+                // Unknown latency is treated as viable: routing away from a provider that
+                // has never been called would be a cold-start deadlock.
+                if (Double.isNaN(ewma) || ewma <= slo) {
+                    viable.add(route);
+                } else {
+                    tooSlow.add(route);
+                }
+            }
+            viable.sort(byPrice.thenComparing(byPriority));
+            tooSlow.sort(byLatency.thenComparing(byPrice));
+            viable.addAll(tooSlow);
+            return viable;
+        }
+        return group;
+    }
+
+    /** Expands operator-defined aliases, following nested ones, bounded to avoid a loop. */
+    private List<String> expandOperatorAliases(List<String> models) {
+        List<String> expanded = new ArrayList<>();
+        for (String model : models) {
+            expandInto(model, expanded, 0);
+        }
+        return expanded;
+    }
+
+    private void expandInto(String model, List<String> out, int depth) {
+        List<String> chain = operatorAliases.chainFor(model);
+        if (chain.isEmpty() || depth > 5) {
+            if (!out.contains(model)) {
+                out.add(model);
+            }
+            return;
+        }
+        for (String hop : chain) {
+            expandInto(hop, out, depth + 1);
+        }
+    }
+
+    /** @param keyId used for stable canary assignment; null means no weighting. */
+    public List<ResolvedRoute> resolve(ChatRequestSpec spec, Long keyId) {
         List<String> wantedModels = new ArrayList<>();
         if (!spec.fallbackModels().isEmpty()) {
             wantedModels.addAll(spec.fallbackModels());
@@ -35,12 +121,17 @@ public class RouteResolver {
         if (!wantedModels.contains(spec.publicModel())) {
             wantedModels.add(0, spec.publicModel());
         }
+        // An operator-defined alias is a chain, not a model: expand it in place so the
+        // declared order becomes the fallback order.
+        wantedModels = expandOperatorAliases(wantedModels);
 
         List<ResolvedRoute> chain = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
 
         for (String model : wantedModels) {
-            for (ModelRoute route : routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(model)) {
+            String target = aliases.isAlias(model) ? aliases.resolve(model).orElse(model) : model;
+            List<ResolvedRoute> group = new ArrayList<>();
+            for (ModelRoute route : routes.findByPublicModelIdAndEnabledTrueOrderByPriorityAscIdAsc(target)) {
                 Provider provider = providers.findById(route.getProviderId()).orElse(null);
                 if (provider == null || !provider.isEnabled()) {
                     continue;
@@ -49,8 +140,9 @@ public class RouteResolver {
                 if (!seen.add(key)) {
                     continue;
                 }
-                chain.add(new ResolvedRoute(route, provider));
+                group.add(new ResolvedRoute(route, provider));
             }
+            chain.addAll(adaptive(weighted(group, keyId, target), target));
         }
 
         if (!spec.providerOrder().isEmpty()) {
@@ -71,5 +163,40 @@ public class RouteResolver {
             chain = chain.subList(0, 1);
         }
         return chain;
+    }
+
+    /** Stable per-key weighted shuffle: the chosen route leads, the rest stay as fallback. */
+    private static List<ResolvedRoute> weighted(List<ResolvedRoute> group, Long keyId, String model) {
+        if (group.size() < 2 || keyId == null) {
+            return group;
+        }
+        // Weighting is opt-in: a chain of default-weight routes keeps priority order,
+        // otherwise fallback would become a lottery.
+        boolean configured = group.stream().anyMatch(r -> r.route().getWeight() != 100);
+        if (!configured) {
+            return group;
+        }
+        int total = group.stream().mapToInt(r -> Math.max(0, r.route().getWeight())).sum();
+        if (total <= 0) {
+            return group;
+        }
+        int point = (int) Math.floorMod(keyId * 131L + model.hashCode(), (long) total);
+        int cursor = 0;
+        int chosen = 0;
+        for (int i = 0; i < group.size(); i++) {
+            cursor += Math.max(0, group.get(i).route().getWeight());
+            if (point < cursor) {
+                chosen = i;
+                break;
+            }
+        }
+        List<ResolvedRoute> ordered = new ArrayList<>(group.size());
+        ordered.add(group.get(chosen));
+        for (int i = 0; i < group.size(); i++) {
+            if (i != chosen) {
+                ordered.add(group.get(i));
+            }
+        }
+        return ordered;
     }
 }

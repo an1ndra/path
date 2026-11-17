@@ -40,11 +40,40 @@ public class ClientKey {
     @Column(precision = 18, scale = 6)
     private BigDecimal creditLimitUsd;
 
+    @Column(precision = 18, scale = 6)
+    private BigDecimal dailyLimitUsd;
+
+    @Column(precision = 18, scale = 6)
+    private BigDecimal monthlyLimitUsd;
+
+    /** Clamps max_tokens on every request; null leaves the client's value alone. */
+    private Integer maxOutputTokens;
+
     @Column(nullable = false, precision = 18, scale = 6)
     private BigDecimal usedUsd = BigDecimal.ZERO;
 
+    /** Pre-authorised worst-case spend for in-flight requests. */
+    @Column(nullable = false, precision = 18, scale = 6)
+    private BigDecimal reservedUsd = BigDecimal.ZERO;
+
+    private Instant reservedUpdatedAt;
+
     @Column(nullable = false)
     private int rpmLimit = 120;
+
+    /** Null means use the gateway default. */
+    private Integer maxConcurrentRequests;
+
+    /** Owning project; null means unassigned. */
+    private Long projectId;
+
+    /** Comma-separated model ids or globs (`gpt-*`); blank means every model. */
+    @Column(length = 1024)
+    private String allowedModels;
+
+    /** Per-end-user daily cap applied to any request carrying an end_user. */
+    @Column(precision = 18, scale = 6)
+    private BigDecimal endUserDailyLimitUsd;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();

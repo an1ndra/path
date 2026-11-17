@@ -63,6 +63,32 @@ public class ModelRoute {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Opt-in: replay identical deterministic requests from the response cache. */
+    /** Traffic share within a public model; equal weights split evenly. */
+    @Column(nullable = false)
+    private int weight = 100;
+
+    /** priority | fastest | cheapest-viable */
+    @Column(nullable = false, length = 32)
+    private String strategy = "priority";
+
+    /** For cheapest-viable: the p95 a route must beat to stay preferred. */
+    private Integer latencySloMs;
+
+    @Column(nullable = false)
+    private boolean cacheEnabled = false;
+
+    /** Second cache tier: a near-duplicate prompt may reuse an entry. Opt-in per route. */
+    @Column(nullable = false)
+    private boolean semanticCacheEnabled = false;
+
+    /** Cosine similarity a candidate must reach. 0.95 is deliberately strict. */
+    @Column(precision = 4, scale = 3, nullable = false)
+    private java.math.BigDecimal semanticThreshold = new java.math.BigDecimal("0.950");
+
+    @Column(nullable = false)
+    private int cacheTtlSeconds = 3600;
+
     @Column(length = 512)
     private String description;
 

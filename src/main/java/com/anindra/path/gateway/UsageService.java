@@ -4,7 +4,9 @@ import com.anindra.path.domain.ClientKey;
 import com.anindra.path.domain.ModelRoute;
 import com.anindra.path.domain.UsageRecord;
 import com.anindra.path.repo.UsageRecordRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UsageService {
 
     private static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000L);
@@ -28,6 +31,8 @@ public class UsageService {
 
     private final UsageRecordRepository usage;
     private final ApiKeyService apiKeys;
+    private final MeterRegistry metrics;
+    private final com.anindra.path.config.GatewayProperties props;
 
     /** Itemised cost of one call. */
     public record CostBreakdown(BigDecimal inputUsd, BigDecimal cachedInputUsd, BigDecimal cacheWriteUsd,
@@ -93,6 +98,7 @@ public class UsageService {
         UsageRecord record = new UsageRecord();
         record.setClientKeyId(key.getId());
         record.setClientKeyName(key.getName());
+        record.setEndUser(spec.endUser());
         record.setPublicModelId(spec.publicModel());
         record.setProviderSlug(resolved.providerSlug());
         record.setUpstreamModelId(resolved.route().getUpstreamModelId());
@@ -121,9 +127,37 @@ public class UsageService {
         record.setFallbackFrom(meta.fallbackFrom());
         record.setStatus(UsageRecord.Status.SUCCESS);
         usage.save(record);
+        recordMetrics(record);
 
         apiKeys.charge(key.getId(), cost.totalUsd());
         return cost.totalUsd();
+    }
+
+    /** Records a cache hit: no upstream call, no charge, savings carried for reporting. */
+    @Transactional
+    public void recordCacheHit(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute resolved,
+                               ResponseCacheService.Entry entry, boolean streamed) {
+        UsageRecord record = new UsageRecord();
+        record.setClientKeyId(key.getId());
+        record.setClientKeyName(key.getName());
+        record.setEndUser(spec.endUser());
+        record.setPublicModelId(spec.publicModel());
+        record.setProviderSlug(entry.providerSlug());
+        record.setUpstreamModelId(resolved.route().getUpstreamModelId());
+        record.setPromptTokens(entry.promptTokens());
+        record.setCompletionTokens(entry.completionTokens());
+        record.setTotalTokens(entry.totalTokens());
+        record.setCostUsd(BigDecimal.ZERO);
+        record.setCachedSavingsUsd(entry.costUsd() == null ? BigDecimal.ZERO : entry.costUsd());
+        record.setLatencyMs(0);
+        record.setStreamed(streamed);
+        record.setAttempts(0);
+        record.setFinishReason("cache");
+        record.setStatus(UsageRecord.Status.SUCCESS);
+        usage.save(record);
+        metrics.counter("path.cache.hits",
+                "model", String.valueOf(record.getPublicModelId())).increment();
+        recordMetrics(record);
     }
 
     @Transactional
@@ -144,6 +178,27 @@ public class UsageService {
         record.setErrorCode(code);
         record.setErrorMessage(message != null && message.length() > 500 ? message.substring(0, 500) : message);
         usage.save(record);
+        recordMetrics(record);
+    }
+
+    /** Feeds the Prometheus endpoint. Tag values stay low-cardinality (model, provider, status). */
+    private void recordMetrics(UsageRecord record) {
+        String model = String.valueOf(record.getPublicModelId());
+        String provider = String.valueOf(record.getProviderSlug());
+        metrics.counter("path.requests",
+                "model", model,
+                "provider", provider,
+                "status", record.getStatus().name().toLowerCase(),
+                "streamed", String.valueOf(record.isStreamed())).increment();
+        metrics.timer("path.latency", "provider", provider)
+                .record(java.time.Duration.ofMillis(record.getLatencyMs()));
+        metrics.counter("path.tokens", "type", "prompt").increment(record.getPromptTokens());
+        metrics.counter("path.tokens", "type", "completion").increment(record.getCompletionTokens());
+        metrics.counter("path.tokens", "type", "cached").increment(record.getCachedInputTokens());
+        if (record.getCostUsd() != null) {
+            metrics.counter("path.cost.usd",
+                    "model", model, "provider", provider).increment(record.getCostUsd().doubleValue());
+        }
     }
 
     private static BigDecimal throughput(TokenUsage usage, CallMeta meta) {
@@ -160,6 +215,54 @@ public class UsageService {
         return BigDecimal.valueOf(usage.completion())
                 .multiply(BigDecimal.valueOf(1000))
                 .divide(BigDecimal.valueOf(window), 2, RoundingMode.HALF_UP);
+    }
+
+    /** Deletes usage older than the retention window; zero keeps history forever. */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 30 3 * * *")
+    @Transactional
+    void purgeOldUsage() {
+        java.time.Duration retention = props.getUsageRetention();
+        if (retention == null || retention.isZero() || retention.isNegative()) {
+            return;
+        }
+        long removed = usage.deleteByCreatedAtBefore(Instant.now().minus(retention));
+        if (removed > 0) {
+            log.info("Purged {} usage rows older than {}", removed, retention);
+        }
+    }
+
+    /** Spend since a timestamp, used by the daily/monthly windows. */
+    public BigDecimal spendFor(Long keyId, Instant from) {
+        return nz(usage.sumCostForKeySince(keyId, from));
+    }
+
+    /** Spend across every key in a project since a timestamp. */
+    /** Spend for one end user on one key since {@code from}; 0 when the id is absent. */
+    public BigDecimal spendForEndUser(Long keyId, String endUser, Instant from) {
+        if (endUser == null || endUser.isBlank()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal spend = usage.sumCostForKeyAndEndUserSince(keyId, endUser, from);
+        return spend == null ? BigDecimal.ZERO : spend;
+    }
+
+    /** Per-end-user rollup for /v1/usage, so a product can bill its own customers. */
+    public List<Map<String, Object>> endUserBreakdown(Long keyId, Duration window) {
+        Instant from = Instant.now().minus(window);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object[] row : usage.groupByEndUserSince(keyId, from)) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("end_user", row[0]);
+            entry.put("requests", ((Number) row[1]).longValue());
+            entry.put("total_tokens", ((Number) row[2]).longValue());
+            entry.put("cost_usd", row[3]);
+            out.add(entry);
+        }
+        return out;
+    }
+
+    public BigDecimal spendForProject(Long projectId, Instant from) {
+        return nz(usage.sumCostForProjectSince(projectId, from));
     }
 
     public Map<String, Object> keySummary(ClientKey key, Duration window) {
@@ -191,6 +294,7 @@ public class UsageService {
                 "cached_input", nz(usage.sumCachedCostForKeySince(key.getId(), from)),
                 "cache_write", nz(usage.sumCacheWriteCostForKeySince(key.getId(), from)),
                 "output", nz(usage.sumOutputCostForKeySince(key.getId(), from))));
+        out.put("end_users", endUserBreakdown(key.getId(), window));
         out.put("credit_limit_usd", key.getCreditLimitUsd());
         out.put("used_usd", key.getUsedUsd());
         out.put("remaining_usd", apiKeys.remaining(key));

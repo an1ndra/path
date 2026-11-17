@@ -9,6 +9,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    ignore:
+      # Spring Boot 4 is a breaking migration (Jackson 3, renamed starters);
+      # take it deliberately, not as an automatic PR.
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major"]
     groups:
       spring:
         patterns:

@@ -27,6 +27,15 @@
 - **Budgets have three windows.** A key carries a lifetime credit limit plus
   `daily_limit_usd` and `monthly_limit_usd`, both checked against stored spend before the
   call.
+- **Requests can carry an end user.** `end_user` (Path-specific) or `user` (the OpenAI
+  field) is stored on the usage row and indexed with the key and timestamp. A key may set
+  `end_user_daily_limit_usd`, which reserves against that end user's own daily budget the
+  same way key credit is reserved — a reservation row per (key, end user), taken with an
+  atomic conditional update, so two concurrent calls cannot both take the last of it. The
+  cap applies even to a key with no credit limit of its own.
+- **`/v1/usage` breaks spend down per end user**, so a product can bill its own customers
+  without a second system of record. `/admin/usage?endUser=` and the CSV export filter by
+  the same field.
 - **Project limits sit above key limits.** A project can carry `rpm_limit` and
   `max_concurrent_requests`, enforced in addition to the key's own caps: a request must
   pass both. A project limit of `0` means unlimited. The 429 names which cap was hit

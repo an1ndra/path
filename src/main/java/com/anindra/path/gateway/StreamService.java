@@ -67,13 +67,14 @@ public class StreamService {
     }
 
     /** Route chain plus the budget reserved for it; release the reservation when done. */
-    public record Prepared(List<RouteResolver.ResolvedRoute> chain, BigDecimal reserved) {
+    public record Prepared(List<RouteResolver.ResolvedRoute> chain,
+                           CreditGuard.Reservation reservation) {
     }
 
     /** Resolve the fallback chain and authorise spend. Throws before any bytes are sent. */
     public Prepared prepare(ChatRequestSpec spec, ClientKey key) {
         List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
-        BigDecimal reserved = creditGuard.check(key, spec, chain.get(0));
+        CreditGuard.Reservation reserved = creditGuard.check(key, spec, chain.get(0));
         return new Prepared(chain, reserved);
     }
 

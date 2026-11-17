@@ -44,6 +44,7 @@ public class ChatCompletionsController {
     private final StreamService streamService;
     private final com.anindra.path.gateway.EmbeddingsService embeddings;
     private final com.anindra.path.gateway.TokenCountService tokenCount;
+    private final com.anindra.path.gateway.CreditGuard creditGuard;
     private final ModelCatalogService catalog;
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
@@ -186,7 +187,7 @@ public class ChatCompletionsController {
             }
             return null;
         } finally {
-            apiKeys.release(key.getId(), prepared.reserved());
+            creditGuard.release(key, prepared.reservation());
         }
     }
 

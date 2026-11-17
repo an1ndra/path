@@ -35,6 +35,10 @@ public class UsageRecord {
     @Column(length = 128)
     private String clientKeyName;
 
+    /** Opaque identifier the caller supplied for its own end user; null when absent. */
+    @Column(length = 128)
+    private String endUser;
+
     @Column(length = 128)
     private String publicModelId;
 

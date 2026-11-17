@@ -98,6 +98,7 @@ public class UsageService {
         UsageRecord record = new UsageRecord();
         record.setClientKeyId(key.getId());
         record.setClientKeyName(key.getName());
+        record.setEndUser(spec.endUser());
         record.setPublicModelId(spec.publicModel());
         record.setProviderSlug(resolved.providerSlug());
         record.setUpstreamModelId(resolved.route().getUpstreamModelId());
@@ -139,6 +140,7 @@ public class UsageService {
         UsageRecord record = new UsageRecord();
         record.setClientKeyId(key.getId());
         record.setClientKeyName(key.getName());
+        record.setEndUser(spec.endUser());
         record.setPublicModelId(spec.publicModel());
         record.setProviderSlug(entry.providerSlug());
         record.setUpstreamModelId(resolved.route().getUpstreamModelId());
@@ -235,6 +237,30 @@ public class UsageService {
     }
 
     /** Spend across every key in a project since a timestamp. */
+    /** Spend for one end user on one key since {@code from}; 0 when the id is absent. */
+    public BigDecimal spendForEndUser(Long keyId, String endUser, Instant from) {
+        if (endUser == null || endUser.isBlank()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal spend = usage.sumCostForKeyAndEndUserSince(keyId, endUser, from);
+        return spend == null ? BigDecimal.ZERO : spend;
+    }
+
+    /** Per-end-user rollup for /v1/usage, so a product can bill its own customers. */
+    public List<Map<String, Object>> endUserBreakdown(Long keyId, Duration window) {
+        Instant from = Instant.now().minus(window);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object[] row : usage.groupByEndUserSince(keyId, from)) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("end_user", row[0]);
+            entry.put("requests", ((Number) row[1]).longValue());
+            entry.put("total_tokens", ((Number) row[2]).longValue());
+            entry.put("cost_usd", row[3]);
+            out.add(entry);
+        }
+        return out;
+    }
+
     public BigDecimal spendForProject(Long projectId, Instant from) {
         return nz(usage.sumCostForProjectSince(projectId, from));
     }
@@ -268,6 +294,7 @@ public class UsageService {
                 "cached_input", nz(usage.sumCachedCostForKeySince(key.getId(), from)),
                 "cache_write", nz(usage.sumCacheWriteCostForKeySince(key.getId(), from)),
                 "output", nz(usage.sumOutputCostForKeySince(key.getId(), from))));
+        out.put("end_users", endUserBreakdown(key.getId(), window));
         out.put("credit_limit_usd", key.getCreditLimitUsd());
         out.put("used_usd", key.getUsedUsd());
         out.put("remaining_usd", apiKeys.remaining(key));

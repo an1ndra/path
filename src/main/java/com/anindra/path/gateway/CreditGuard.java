@@ -26,13 +26,23 @@ public class CreditGuard {
     private static final int EXPECTED_OUTPUT = 512;
 
     private final ApiKeyService apiKeys;
+    private final EndUserBudget endUserBudget;
     private final UsageService usage;
     private final GatewayProperties props;
     private final com.anindra.path.admin.AlertService alerts;
     private final com.anindra.path.repo.ProjectRepository projects;
 
-    /** @return the amount reserved for this call; release it when the call ends. */
-    public BigDecimal check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
+    /**
+     * What was reserved for a call: the key's credit and, when the request carries an
+     * end user with a cap, that end user's daily budget.
+     */
+    public record Reservation(BigDecimal keyUsd, BigDecimal endUserUsd, String endUser) {
+        public static Reservation none() {
+            return new Reservation(BigDecimal.ZERO, BigDecimal.ZERO, null);
+        }
+    }
+
+    public Reservation check(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute route) {
         if (!allows(key, spec.publicModel())) {
             throw new ApiException(403, "permission_error", "model_not_allowed",
                     "This API key is not allowed to use model '" + spec.publicModel() + "'.");
@@ -72,9 +82,24 @@ public class CreditGuard {
             });
         }
 
+        // Estimate before the balance checks: the end-user cap applies even to a key with
+        // no credit limit of its own, so it cannot sit behind the remaining == null return.
+        int promptEstimate = spec.estimatePromptTokens(route.route().getUpstreamModelId());
+        int outputEstimate = spec.maxTokens() != null ? spec.maxTokens() : DEFAULT_MAX_OUTPUT;
+        outputEstimate = Math.min(outputEstimate, ESTIMATE_CAP);
+        BigDecimal worstCase = usage.cost(route.route(),
+                TokenUsage.of(promptEstimate, outputEstimate)).totalUsd();
+        // Reserve what a typical completion would cost, not the absolute cap: a small
+        // balance should not be blocked by a generous max_tokens it will never use.
+        int expectedOutput = Math.min(outputEstimate, EXPECTED_OUTPUT);
+        BigDecimal expected = usage.cost(route.route(),
+                TokenUsage.of(promptEstimate, expectedOutput)).totalUsd();
+
         BigDecimal remaining = apiKeys.remaining(key);
         if (remaining == null) {
-            return BigDecimal.ZERO;
+            // Unlimited key: it still has to fit its end-user caps.
+            BigDecimal endUserOnly = reserveEndUser(key, spec, worstCase, expected, dayStart);
+            return new Reservation(BigDecimal.ZERO, endUserOnly, spec.endUser());
         }
         if (key.getCreditLimitUsd() != null && key.getCreditLimitUsd().signum() > 0) {
             double left = remaining.divide(key.getCreditLimitUsd(), 4, java.math.RoundingMode.HALF_UP).doubleValue();
@@ -92,32 +117,60 @@ public class CreditGuard {
                     "This API key has no credit left (" + key.getUsedUsd() + " of "
                             + key.getCreditLimitUsd() + " USD used). Top up the key to continue.");
         }
-        int promptEstimate = spec.estimatePromptTokens(route.route().getUpstreamModelId());
-        int outputEstimate = spec.maxTokens() != null ? spec.maxTokens() : DEFAULT_MAX_OUTPUT;
-        outputEstimate = Math.min(outputEstimate, ESTIMATE_CAP);
-        BigDecimal worstCase = usage.cost(route.route(),
-                TokenUsage.of(promptEstimate, outputEstimate)).totalUsd();
-        // Reserve what a typical completion would cost, not the absolute cap: a small
-        // balance should not be blocked by a generous max_tokens it will never use.
-        int expectedOutput = Math.min(outputEstimate, EXPECTED_OUTPUT);
-        BigDecimal expected = usage.cost(route.route(),
-                TokenUsage.of(promptEstimate, expectedOutput)).totalUsd();
-
         if (expected.compareTo(remaining) > 0) {
             throw ApiException.insufficientCredits(
                     "This request is expected to cost about " + expected.toPlainString()
                             + " USD but only " + remaining.toPlainString()
                             + " USD of credit remains. Lower max_tokens or top up the key.");
         }
+        BigDecimal endUserUsd = reserveEndUser(key, spec, worstCase, expected, dayStart);
         BigDecimal reserve = worstCase.min(remaining);
         if (!apiKeys.reserve(key.getId(), reserve)) {
+            endUserBudget.release(key.getId(), spec.endUser(), endUserUsd);
             throw ApiException.insufficientCredits(
                     "Credit is exhausted by concurrent requests. Retry shortly or top up the key.");
+        }
+        return new Reservation(reserve, endUserUsd, spec.endUser());
+    }
+
+    /**
+     * Reserves against the key's per-end-user daily cap. The spend read and the atomic
+     * increment are separate, which bounds an overshoot to one in-flight request — the
+     * same guarantee the key-level reservation gives.
+     */
+    private BigDecimal reserveEndUser(ClientKey key, ChatRequestSpec spec, BigDecimal worstCase,
+                                      BigDecimal expected, Instant dayStart) {
+        BigDecimal limit = key.getEndUserDailyLimitUsd();
+        if (limit == null || limit.signum() <= 0 || spec.endUser() == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal spent = usage.spendForEndUser(key.getId(), spec.endUser(), dayStart);
+        BigDecimal headroom = limit.subtract(spent);
+        if (expected.compareTo(headroom) > 0) {
+            throw ApiException.insufficientCredits(
+                    "End user '" + spec.endUser() + "' is expected to cost about "
+                            + expected.toPlainString() + " USD but only " + headroom.max(BigDecimal.ZERO)
+                            .toPlainString() + " USD of its daily budget of " + limit.toPlainString()
+                            + " USD remains.");
+        }
+        BigDecimal reserve = worstCase.min(headroom);
+        if (!endUserBudget.reserve(key.getId(), spec.endUser(), reserve, headroom)) {
+            throw ApiException.insufficientCredits(
+                    "End user '" + spec.endUser() + "' has budget in flight by concurrent requests. "
+                            + "Retry shortly.");
         }
         return reserve;
     }
 
-    /** Comma-separated ids or globs; blank means every model. */
+    /** Releases both reservations taken by {@link #check}. */
+    public void release(ClientKey key, Reservation reservation) {
+        if (reservation == null) {
+            return;
+        }
+        apiKeys.release(key.getId(), reservation.keyUsd());
+        endUserBudget.release(key.getId(), reservation.endUser(), reservation.endUserUsd());
+    }
+
     private void enforceProjectWindow(com.anindra.path.domain.Project project, String window,
                                       BigDecimal limit, BigDecimal spent, Instant periodStart,
                                       Instant now) {

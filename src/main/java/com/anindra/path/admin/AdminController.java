@@ -235,9 +235,10 @@ public class AdminController {
     @GetMapping("/usage")
     public Map<String, Object> usage(@RequestParam(required = false) Long keyId,
                                      @RequestParam(required = false) Long projectId,
+                                     @RequestParam(required = false) String endUser,
                                      @RequestParam(defaultValue = "24h") String window,
                                      @RequestParam(defaultValue = "100") int limit) {
-        return reporting.usage(keyId, projectId, window, limit);
+        return reporting.usage(keyId, projectId, endUser, window, limit);
     }
 
     @PostMapping("/providers/{id}/probe")
@@ -254,6 +255,7 @@ public class AdminController {
     public org.springframework.http.ResponseEntity<String> exportUsage(
             @RequestParam(required = false) Long keyId,
             @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String endUser,
             @RequestParam(defaultValue = "30d") String window,
             @RequestParam(defaultValue = "10000") int limit) {
         java.time.Duration parsed = com.anindra.path.api.Durations.cap(
@@ -261,7 +263,7 @@ public class AdminController {
                 java.time.Duration.ofDays(365));
         java.time.Instant to = java.time.Instant.now();
         java.time.Instant from = to.minus(parsed);
-        String csv = reporting.usageCsv(keyId, projectId, from, to, limit);
+        String csv = reporting.usageCsv(keyId, projectId, endUser, from, to, limit);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"usage-" + to + ".csv\"")
                 .body(csv);

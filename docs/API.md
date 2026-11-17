@@ -172,6 +172,27 @@ data: [DONE]
 **Tool calls** are passed through for OpenAI-shaped providers and translated to
 `tool_use` / `tool_result` blocks for Anthropic.
 
+**End-user attribution**
+
+```json
+{"model":"gpt-4o-mini","end_user":"customer-8821",
+ "messages":[{"role":"user","content":"..."}]}
+```
+
+`end_user` is stored on the usage row and indexed with the key and timestamp, so a key
+with `end_user_daily_limit_usd` can cap each of its customers separately and `/v1/usage`
+can report `end_users[]` back to the caller. `user` is accepted as an alias because that
+is the field OpenAI clients already send; `end_user` wins when both are present.
+At most 128 characters.
+
+### `POST /v1/tokens/count`
+
+Free, authenticated, and bounded exactly like chat: the model allowlist, drain state,
+concurrency limiter and RPM limiter all apply. Returns `prompt_tokens`, `estimated`
+(true when the chars/4 heuristic was used rather than a real encoding) and a `fits` block
+with the route's context window and your `max_output_tokens`. Tool definitions and
+tool-result messages are counted, since that is where estimates are usually wrong.
+
 ### `POST /v1/embeddings`
 
 OpenAI-shaped embeddings. Only `OPENAI`-type providers are supported; an Anthropic route

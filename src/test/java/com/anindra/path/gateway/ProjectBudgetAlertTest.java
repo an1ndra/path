@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -37,7 +38,9 @@ class ProjectBudgetAlertTest {
     private final com.anindra.path.admin.AlertService alerts =
             mock(com.anindra.path.admin.AlertService.class);
     private final GatewayProperties props = new GatewayProperties();
-    private final CreditGuard guard = new CreditGuard(apiKeys, usage, props, alerts, projects);
+    private final EndUserBudget endUserBudget = mock(EndUserBudget.class);
+    private final CreditGuard guard =
+            new CreditGuard(apiKeys, endUserBudget, usage, props, alerts, projects);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private Project project(String dailyLimit) {
@@ -72,9 +75,98 @@ class ProjectBudgetAlertTest {
         when(apiKeys.reserve(any(), any())).thenReturn(true);
     }
 
+    private ChatRequestSpec specFor(String endUser) throws Exception {
+        return ChatRequestSpec.parse((ObjectNode) mapper.readTree(
+                "{\"model\":\"gpt-4o-mini\",\"end_user\":\"" + endUser + "\","
+                        + "\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"));
+    }
+
     private ChatRequestSpec spec() throws Exception {
         return ChatRequestSpec.parse((ObjectNode) mapper.readTree(
                 "{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"));
+    }
+
+    @Test
+    void theEndUserCapBlocksWhenItsDailyBudgetIsSpent() throws Exception {
+        ClientKey key = key(7L);
+        key.setEndUserDailyLimitUsd(new BigDecimal("1.00"));
+        when(projects.findById(7L)).thenReturn(Optional.of(project(null)));
+        when(usage.spendForEndUser(eq(1L), eq("alice"), any(Instant.class)))
+                .thenReturn(new BigDecimal("1.00"));
+        when(apiKeys.remaining(any())).thenReturn(new BigDecimal("10.00"));
+        stubCost();
+
+        assertThatThrownBy(() -> guard.check(key, specFor("alice"), route()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("alice");
+    }
+
+    @Test
+    void aSecondEndUserIsUnaffectedByTheFirstOnesCap() throws Exception {
+        ClientKey key = key(7L);
+        key.setEndUserDailyLimitUsd(new BigDecimal("1.00"));
+        when(projects.findById(7L)).thenReturn(Optional.of(project(null)));
+        when(usage.spendForEndUser(eq(1L), eq("alice"), any(Instant.class)))
+                .thenReturn(new BigDecimal("1.00"));
+        when(usage.spendForEndUser(eq(1L), eq("bob"), any(Instant.class)))
+                .thenReturn(BigDecimal.ZERO);
+        when(apiKeys.remaining(any())).thenReturn(new BigDecimal("10.00"));
+        when(endUserBudget.reserve(eq(1L), eq("bob"), any(), any())).thenReturn(true);
+        stubCost();
+
+        var reservation = guard.check(key, specFor("bob"), route());
+
+        assertThat(reservation.endUser()).isEqualTo("bob");
+        assertThat(reservation.endUserUsd()).isPositive();
+    }
+
+    @Test
+    void withoutACapNothingIsReservedForTheEndUser() throws Exception {
+        when(projects.findById(7L)).thenReturn(Optional.of(project(null)));
+        when(apiKeys.remaining(any())).thenReturn(new BigDecimal("10.00"));
+        stubCost();
+
+        var reservation = guard.check(key(7L), specFor("alice"), route());
+
+        assertThat(reservation.endUserUsd()).isEqualByComparingTo("0");
+        verify(endUserBudget, never()).reserve(any(), any(), any(), any());
+    }
+
+    @Test
+    void anUnlimitedKeyStillEnforcesItsEndUserCap() throws Exception {
+        // Regression: the cap used to sit behind the remaining == null early return, so a
+        // key without a credit limit skipped it entirely.
+        ClientKey key = key(7L);
+        key.setEndUserDailyLimitUsd(new BigDecimal("1.00"));
+        when(projects.findById(7L)).thenReturn(Optional.of(project(null)));
+        when(usage.spendForEndUser(eq(1L), eq("alice"), any(Instant.class)))
+                .thenReturn(new BigDecimal("1.00"));
+        when(apiKeys.remaining(any())).thenReturn(null);
+        stubCost();
+
+        assertThatThrownBy(() -> guard.check(key, specFor("alice"), route()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("alice");
+    }
+
+    @Test
+    void theKeyReservationIsReleasedWhenTheEndUserReservationFails() throws Exception {
+        ClientKey key = key(7L);
+        key.setEndUserDailyLimitUsd(new BigDecimal("1.00"));
+        when(projects.findById(7L)).thenReturn(Optional.of(project(null)));
+        when(usage.spendForEndUser(eq(1L), eq("alice"), any(Instant.class)))
+                .thenReturn(BigDecimal.ZERO);
+        when(endUserBudget.reserve(eq(1L), eq("alice"), any(), any())).thenReturn(true);
+        when(apiKeys.remaining(any())).thenReturn(new BigDecimal("10.00"));
+        stubCost();
+        // after stubCost, so the key reservation is the one that fails
+        when(apiKeys.reserve(any(), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> guard.check(key, specFor("alice"), route()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("concurrent");
+
+        verify(endUserBudget).release(eq(1L), eq("alice"), any());
     }
 
     @Test

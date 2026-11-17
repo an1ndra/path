@@ -27,9 +27,20 @@ class CreditGuardTest {
     private final GatewayProperties props = new GatewayProperties();
     private final com.anindra.path.repo.ProjectRepository projects =
             mock(com.anindra.path.repo.ProjectRepository.class);
-    private final CreditGuard guard = new CreditGuard(apiKeys, usage, props,
+    private final EndUserBudget endUserBudget = mock(EndUserBudget.class);
+    private final CreditGuard guard = new CreditGuard(apiKeys, endUserBudget, usage, props,
             new com.anindra.path.admin.AlertService(props, new ObjectMapper()), projects);
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubCost() {
+        // Estimates are computed before the balance is read, so every test that gets past
+        // the budget windows needs a price.
+        org.mockito.Mockito.lenient().when(usage.cost(any(), any()))
+                .thenReturn(new UsageService.CostBreakdown(BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("0.0001")));
+    }
 
     private ClientKey key(BigDecimal daily, BigDecimal monthly, Integer maxOutput) {
         ClientKey key = new ClientKey();
@@ -111,7 +122,7 @@ class CreditGuardTest {
                         BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("0.0005")));
 
         // max_tokens is 8000, but a typical completion fits in the remaining balance.
-        BigDecimal reserved = guard.check(key, spec("8000"), route());
+        BigDecimal reserved = guard.check(key, spec("8000"), route()).keyUsd();
 
         assertThat(reserved).isEqualByComparingTo("0.001");
     }

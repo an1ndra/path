@@ -71,6 +71,10 @@ public class ClientKey {
     @Column(length = 1024)
     private String allowedModels;
 
+    /** Per-end-user daily cap applied to any request carrying an end_user. */
+    @Column(precision = 18, scale = 6)
+    private BigDecimal endUserDailyLimitUsd;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 

@@ -40,6 +40,18 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
     @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from")
     BigDecimal sumCostForKeySince(Long keyId, Instant from);
 
+    @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.clientKeyId = :keyId and u.endUser = :endUser and u.createdAt >= :from")
+    BigDecimal sumCostForKeyAndEndUserSince(Long keyId, String endUser, Instant from);
+
+    @Query("select u.endUser, count(u), coalesce(sum(u.totalTokens), 0), coalesce(sum(u.costUsd), 0) "
+            + "from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from "
+            + "and u.endUser is not null group by u.endUser order by sum(u.costUsd) desc")
+    List<Object[]> groupByEndUserSince(Long keyId, Instant from);
+
+    List<UsageRecord> findByClientKeyIdAndEndUserOrderByCreatedAtDesc(
+            Long clientKeyId, String endUser, Pageable pageable);
+
     @Query("select coalesce(sum(u.promptTokens), 0) from UsageRecord u where u.clientKeyId = :keyId and u.createdAt >= :from")
     Long sumPromptTokensForKeySince(Long keyId, Instant from);
 

@@ -67,6 +67,7 @@ public class AdminService {
     public record KeyInput(String name, @JsonAlias("creditLimitUsd") BigDecimal creditLimitUsd,
                            @JsonAlias("dailyLimitUsd") BigDecimal dailyLimitUsd,
                            @JsonAlias("monthlyLimitUsd") BigDecimal monthlyLimitUsd,
+                           @JsonAlias("endUserDailyLimitUsd") BigDecimal endUserDailyLimitUsd,
                            @JsonAlias("maxOutputTokens") Integer maxOutputTokens,
                            @JsonAlias("rpmLimit") Integer rpmLimit,
                            @JsonAlias("maxConcurrentRequests") Integer maxConcurrentRequests,
@@ -418,6 +419,7 @@ public class AdminService {
         created.key().setMonthlyLimitUsd(in.monthlyLimitUsd());
         created.key().setMaxOutputTokens(in.maxOutputTokens());
         created.key().setAllowedModels(in.allowedModels());
+        created.key().setEndUserDailyLimitUsd(in.endUserDailyLimitUsd());
         created.key().setProjectId(in.projectId());
         clientKeys.save(created.key());
         Map<String, Object> view = keyView(created.key());
@@ -453,6 +455,9 @@ public class AdminService {
         }
         if (in.monthlyLimitUsd() != null) {
             key.setMonthlyLimitUsd(in.monthlyLimitUsd());
+        }
+        if (in.endUserDailyLimitUsd() != null) {
+            key.setEndUserDailyLimitUsd(in.endUserDailyLimitUsd());
         }
         if (in.maxOutputTokens() != null) {
             key.setMaxOutputTokens(in.maxOutputTokens());
@@ -505,6 +510,7 @@ public class AdminService {
         view.put("max_concurrent_requests", k.getMaxConcurrentRequests());
         view.put("daily_limit_usd", k.getDailyLimitUsd());
         view.put("monthly_limit_usd", k.getMonthlyLimitUsd());
+        view.put("end_user_daily_limit_usd", k.getEndUserDailyLimitUsd());
         view.put("max_output_tokens", k.getMaxOutputTokens());
         view.put("allowed_models", k.getAllowedModels());
         view.put("project_id", k.getProjectId());

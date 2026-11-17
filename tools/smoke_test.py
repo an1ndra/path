@@ -471,6 +471,61 @@ def main():
     check("embeddings reject a different body on the same key",
           status == 409 and conflict["error"]["code"] == "idempotency_conflict", str(status))
 
+    # ------------------------------------------------------- end-user billing
+    status, _, eu_key = jreq("POST", "/admin/keys", {
+        "name": "end-user-key", "end_user_daily_limit_usd": 1000}, admin=True)
+    check("a key can carry an end-user daily cap",
+          status == 200 and float(eu_key.get("end_user_daily_limit_usd") or 0) == 1000.0,
+          str(status))
+    eu_key_value = eu_key.get("key")
+
+    status, _, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "end_user": "alice",
+        "messages": [{"role": "user", "content": "bill me"}]}, key=eu_key_value)
+    check("a chat request carrying end_user succeeds", status == 200, str(status))
+
+    _, _, eu_usage = jreq("GET", "/v1/usage?window=1h", key=eu_key_value)
+    end_users = {row["end_user"]: row for row in eu_usage.get("end_users", [])}
+    check("usage is attributed to the end user",
+          "alice" in end_users and float(end_users["alice"]["cost_usd"]) > 0,
+          str(eu_usage.get("end_users"))[:150])
+
+    _, _, filtered = jreq("GET", "/admin/usage?endUser=alice&window=1h", admin=True)
+    rows = filtered.get("data", [])
+    check("admin usage filters by end user",
+          filtered.get("end_user") == "alice" and rows
+          and all(r.get("end_user") == "alice" for r in rows), str(len(rows)))
+
+    status, _, csv_bytes = req("GET", "/admin/usage/export?endUser=alice&window=1h", admin=True)
+    check("the CSV export filters by end user", status == 200 and b"end_user" in csv_bytes, str(status))
+
+    # A cap just above one call: alice is spent, carol is not.
+    jreq("PATCH", f"/admin/keys/{eu_key['id']}", {"end_user_daily_limit_usd": 0.000006}, admin=True)
+    # max_tokens 1 keeps the pre-flight estimate small, so the cap is exercised without
+    # having to spend 0.0003 USD to reach it.
+    status, _, alice_body = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "end_user": "alice", "max_tokens": 1,
+        "messages": [{"role": "user", "content": "again"}]}, key=eu_key_value)
+    check("the end-user cap stops a spent end user",
+          status == 402 and "alice" in alice_body.get("error", {}).get("message", ""),
+          str(status) + str(alice_body)[:120])
+
+    status, _, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "end_user": "carol", "max_tokens": 1,
+        "messages": [{"role": "user", "content": "first time"}]}, key=eu_key_value)
+    check("another end user on the same key is unaffected", status == 200, str(status))
+
+    # lift the cap again so the alias check is not blocked by it
+    jreq("PATCH", f"/admin/keys/{eu_key['id']}", {"end_user_daily_limit_usd": 1000}, admin=True)
+
+    status, _, _ = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "user": "dave",
+        "messages": [{"role": "user", "content": "openai style"}]}, key=eu_key_value)
+    _, _, dave_usage = jreq("GET", "/v1/usage?window=1h", key=eu_key_value)
+    dave_rows = {row["end_user"] for row in dave_usage.get("end_users", [])}
+    check("the OpenAI 'user' field is accepted as an alias",
+          status == 200 and "dave" in dave_rows, str(dave_rows))
+
     # ------------------------------------------------------------ token count
     status, _, counted = jreq("POST", "/v1/tokens/count", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "count me"}]}, key=key)

@@ -25,13 +25,20 @@ public class AdminReportingService {
     private final AdminService adminService;
     private final com.anindra.path.repo.ClientKeyRepository keys;
 
-    public Map<String, Object> usage(Long keyId, Long projectId, String window, int limit) {
+    public Map<String, Object> usage(Long keyId, Long projectId, String endUser, String window,
+                                     int limit) {
         Duration parsed = Durations.cap(Durations.parse(window, Duration.ofHours(24)), Duration.ofDays(365));
         int capped = Math.max(1, Math.min(limit, 500));
         java.time.Instant from = java.time.Instant.now().minus(parsed);
 
         List<UsageRecord> records;
-        if (keyId != null) {
+        if (endUser != null && !endUser.isBlank()) {
+            records = keyId != null
+                    ? usage.findByClientKeyIdAndEndUserOrderByCreatedAtDesc(
+                            keyId, endUser, PageRequest.of(0, capped))
+                    : usage.findAll(PageRequest.of(0, capped)).stream()
+                            .filter(r -> endUser.equals(r.getEndUser())).toList();
+        } else if (keyId != null) {
             records = usage.findByClientKeyIdOrderByCreatedAtDesc(keyId, PageRequest.of(0, capped));
         } else if (projectId != null) {
             List<Long> keyIds = projectKeyIds(projectId);
@@ -49,6 +56,7 @@ public class AdminReportingService {
             row.put("at", r.getCreatedAt().toString());
             row.put("key_id", r.getClientKeyId());
             row.put("key_name", r.getClientKeyName());
+        row.put("end_user", r.getEndUser());
             row.put("model", r.getPublicModelId());
             row.put("provider", r.getProviderSlug());
             row.put("upstream_model", r.getUpstreamModelId());
@@ -86,14 +94,15 @@ public class AdminReportingService {
         out.put("object", "list");
         out.put("window", parsed.toString());
         out.put("project_id", projectId);
+        out.put("end_user", endUser);
         out.put("count", rows.size());
         out.put("data", rows);
         return out;
     }
 
     /** Comma-separated statement of calls, one row per request, oldest first. */
-    public String usageCsv(Long keyId, Long projectId, java.time.Instant from, java.time.Instant to,
-                           int limit) {
+    public String usageCsv(Long keyId, Long projectId, String endUser, java.time.Instant from,
+                           java.time.Instant to, int limit) {
         int capped = Math.max(1, Math.min(limit, 50_000));
         List<UsageRecord> rows;
         if (projectId != null) {
@@ -101,6 +110,9 @@ public class AdminReportingService {
             rows = keyIds.isEmpty() ? List.of()
                     : usage.findByClientKeyIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
                             keyIds, from, to, PageRequest.of(0, capped));
+        } else if (endUser != null && !endUser.isBlank()) {
+            rows = usage.findByCreatedAtBetweenOrderByCreatedAtAsc(from, to, PageRequest.of(0, capped))
+                    .stream().filter(r -> endUser.equals(r.getEndUser())).toList();
         } else {
             rows = usage.findByCreatedAtBetweenOrderByCreatedAtAsc(from, to, PageRequest.of(0, capped));
         }
@@ -109,7 +121,7 @@ public class AdminReportingService {
         csv.append("created_at,key_id,key_name,model,provider,upstream_model,prompt_tokens,")
                 .append("completion_tokens,cached_input_tokens,cache_write_tokens,reasoning_tokens,")
                 .append("input_cost_usd,cached_input_cost_usd,cache_write_cost_usd,output_cost_usd,")
-                .append("cost_usd,latency_ms,ttft_ms,streamed,status,error_code\n");
+                .append("cost_usd,latency_ms,ttft_ms,streamed,status,error_code,end_user\n");
 
         for (UsageRecord r : rows) {
             if (keyId != null && !keyId.equals(r.getClientKeyId())) {
@@ -135,7 +147,8 @@ public class AdminReportingService {
                     .append(r.getTtftMs() == null ? "" : r.getTtftMs()).append(',')
                     .append(r.isStreamed()).append(',')
                     .append(r.getStatus().name().toLowerCase()).append(',')
-                    .append(escape(r.getErrorCode()))
+                    .append(escape(r.getErrorCode())).append(',')
+                    .append(escape(r.getEndUser()))
                     .append('\n');
         }
         return csv.toString();

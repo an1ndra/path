@@ -29,10 +29,11 @@ public final class ChatRequestSpec {
     private Integer maxTokens;
     private final List<String> providerOrder;
     private final boolean allowFallbacks;
+    private final String endUser;
 
     private ChatRequestSpec(ObjectNode body, String publicModel, List<String> fallbackModels,
                             boolean stream, boolean includeUsage, Integer maxTokens,
-                            List<String> providerOrder, boolean allowFallbacks) {
+                            List<String> providerOrder, boolean allowFallbacks, String endUser) {
         this.body = body;
         this.publicModel = publicModel;
         this.fallbackModels = fallbackModels;
@@ -41,6 +42,7 @@ public final class ChatRequestSpec {
         this.maxTokens = maxTokens;
         this.providerOrder = providerOrder;
         this.allowFallbacks = allowFallbacks;
+        this.endUser = endUser;
     }
 
     public static ChatRequestSpec parse(ObjectNode body) {
@@ -120,7 +122,7 @@ public final class ChatRequestSpec {
         }
 
         return new ChatRequestSpec(body, model, models, stream, includeUsage, maxTokens,
-                providerOrder, allowFallbacks);
+                providerOrder, allowFallbacks, readEndUser(body));
     }
 
     /** Deep copy with gateway-only fields stripped, ready to forward. */
@@ -129,6 +131,37 @@ public final class ChatRequestSpec {
         GATEWAY_ONLY_FIELDS.forEach(copy::remove);
         return copy;
     }
+
+    /**
+     * The caller's own end-user id. "end_user" is Path-specific and wins; "user" is
+     * accepted because it is what OpenAI clients already send.
+     */
+    private static String readEndUser(ObjectNode body) {
+        String value = firstText(body, "end_user", "user");
+        if (value == null) {
+            return null;
+        }
+        value = value.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (value.length() > 128) {
+            throw ApiException.badRequest("'end_user' must be at most 128 characters.", "end_user");
+        }
+        return value;
+    }
+
+    private static String firstText(ObjectNode body, String... names) {
+        for (String name : names) {
+            JsonNode node = body.get(name);
+            if (node != null && node.isTextual() && !node.asText().isBlank()) {
+                return node.asText();
+            }
+        }
+        return null;
+    }
+
+    public String endUser() { return endUser; }
 
     public ObjectNode body() { return body; }
     public String publicModel() { return publicModel; }
@@ -246,6 +279,6 @@ public final class ChatRequestSpec {
             }
         }
         return new ChatRequestSpec(body, model, models, false, false, null, providerOrder,
-                allowFallbacks);
+                allowFallbacks, readEndUser(body));
     }
 }

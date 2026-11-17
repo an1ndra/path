@@ -47,7 +47,7 @@ public class EmbeddingsService {
 
         ChatRequestSpec spec = routingSpec(model);
         List<RouteResolver.ResolvedRoute> chain = resolver.resolve(spec, key.getId());
-        BigDecimal reserved = creditGuard.check(key, spec, chain.get(0));
+        CreditGuard.Reservation reserved = creditGuard.check(key, spec, chain.get(0));
 
         RouteResolver.ResolvedRoute resolved = chain.stream()
                 .filter(r -> r.provider().getType() == ProviderType.OPENAI)
@@ -67,7 +67,7 @@ public class EmbeddingsService {
         try {
             return doEmbed(request, key, spec, resolved, provider, apiKey, model, started);
         } finally {
-            apiKeys.release(key.getId(), reserved);
+            creditGuard.release(key, reserved);
         }
     }
 

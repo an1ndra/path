@@ -815,7 +815,7 @@ def main():
 
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]})
-    check("missing key -> 401", status == 401 and body["error"]["code"] == "missing_api_key", str(status))
+    check("missing key -> 401", status == 401 and body["error"]["code"] == "invalid_api_key", str(status))
 
     # ------------------------------------------------------------------ credits
     status, _, poor = jreq("POST", "/admin/keys", {

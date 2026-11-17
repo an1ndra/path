@@ -33,9 +33,7 @@ Every failure uses the OpenAI envelope:
 
 | Code | HTTP | Meaning |
 |---|---|---|
-| `missing_api_key` | 401 | no `Authorization` header |
-| `invalid_api_key` | 401 | unknown or malformed key |
-| `key_disabled` | 401 | key revoked or disabled |
+| `invalid_api_key` | 401 | no `Authorization` header, unknown key, or disabled key — deliberately one code, so the response cannot be used to test whether a key exists |
 | `invalid_admin_token` | 401 | bad `X-Admin-Token` |
 | `forbidden` | 403 | admin API disabled (no token configured) |
 | `model_not_found` | 404 | no enabled route for that model id |

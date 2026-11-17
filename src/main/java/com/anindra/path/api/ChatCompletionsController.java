@@ -67,7 +67,7 @@ public class ChatCompletionsController {
 
         if (key == null) {
             throw ApiException.unauthorized(
-                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+                    "Invalid or missing API key. Send a current key as 'Authorization: Bearer sk-gw-...'.", "invalid_api_key");
         }
 
         drain.begin();
@@ -225,7 +225,7 @@ public class ChatCompletionsController {
             HttpServletRequest request) {
         if (key == null) {
             throw ApiException.unauthorized(
-                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+                    "Invalid or missing API key. Send a current key as 'Authorization: Bearer sk-gw-...'.", "invalid_api_key");
         }
 
         String idempotencyKey = normalizeIdempotencyKey(request.getHeader(IDEMPOTENCY_HEADER));
@@ -281,7 +281,7 @@ public class ChatCompletionsController {
             HttpServletRequest request) {
         if (key == null) {
             throw ApiException.unauthorized(
-                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+                    "Invalid or missing API key. Send a current key as 'Authorization: Bearer sk-gw-...'.", "invalid_api_key");
         }
         drain.begin();
         try {
@@ -345,7 +345,7 @@ public class ChatCompletionsController {
     private static void requireKey(ClientKey key) {
         if (key == null) {
             throw ApiException.unauthorized(
-                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+                    "Invalid or missing API key. Send a current key as 'Authorization: Bearer sk-gw-...'.", "invalid_api_key");
         }
     }
 }

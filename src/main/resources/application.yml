@@ -83,6 +83,10 @@ gateway:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
     global-max-failures: ${GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES:0}
+  client-auth:
+    max-failures: ${GATEWAY_CLIENT_AUTH_FAILURES:60}
+    window: ${GATEWAY_CLIENT_AUTH_WINDOW:1m}
+    global-max-failures: ${GATEWAY_CLIENT_AUTH_GLOBAL_FAILURES:0}
   guardrails:
     prompt-log-redaction: ${GATEWAY_GUARDRAILS_LOG_REDACTION:true}
     redact-before-send: ${GATEWAY_GUARDRAILS_REDACT:false}

@@ -78,6 +78,7 @@ public class GatewayProperties {
     private PromptLogging promptLogging = new PromptLogging();
     private RateLimit rateLimit = new RateLimit();
     private AdminAuth adminAuth = new AdminAuth();
+    private ClientAuth clientAuth = new ClientAuth();
     private ProxyAuth proxyAuth = new ProxyAuth();
 
     @Getter
@@ -117,6 +118,19 @@ public class GatewayProperties {
          * trustworthy — which it is only when the origin is not reachable except through the
          * trusted proxy. Enable this for a deployment that cannot make that guarantee.
          */
+        private int globalMaxFailures = 0;
+    }
+
+    @Getter
+    @Setter
+    public static class ClientAuth {
+        /**
+         * Rejected API keys allowed per address per window before 429s start. Generous
+         * enough that a legitimate client with a typo or a rotated key never notices.
+         */
+        private int maxFailures = 60;
+        private Duration window = Duration.ofMinutes(1);
+        /** Process-wide cap; 0 disables. Same trade-off as the admin one. */
         private int globalMaxFailures = 0;
     }
 

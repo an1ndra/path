@@ -41,6 +41,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private final RateLimitStore rateLimiter;
     private final com.anindra.path.admin.TenancyService tenancy;
     private final AdminAuthLimiter adminAuthLimiter;
+    private final ClientAuthLimiter clientAuthLimiter;
     private final GatewayProperties props;
     private final com.anindra.path.repo.ProjectRepository projects;
     private final ObjectMapper mapper;
@@ -68,7 +69,7 @@ public class AuthFilter extends OncePerRequestFilter {
             } else if (path.startsWith("/actuator")) {
                 requireActuatorAccess(request, path);
             } else if (!isPublicModelsRequest(request)) {
-                ClientKey key = resolveClientKey(request);
+                ClientKey key = authenticateClientKey(request);
                 int retryAfter = rateLimiter.acquire(key.getId(), key.getRpmLimit());
                 if (retryAfter > 0) {
                     throw ApiException.rateLimited(
@@ -151,6 +152,31 @@ public class AuthFilter extends OncePerRequestFilter {
                 && "/actuator/health".equals(path);
         if (!liveness) {
             requireAdmin(request);
+        }
+    }
+
+    /**
+     * Resolves the client key, metering failures per address first.
+     *
+     * The 429 is checked before the key lookup so a guessing campaign never reaches the
+     * database, and it is returned for a wrong key exactly as for a flood of them — the
+     * response must not reveal whether a guess was at least well-formed.
+     */
+    private ClientKey authenticateClientKey(HttpServletRequest request) {
+        String address = clientAddress(request);
+        long retryAfter = clientAuthLimiter.retryAfterSeconds(address);
+        if (retryAfter > 0) {
+            throw ApiException.rateLimited(
+                    "Too many rejected API keys from this address. Retry in " + retryAfter + "s.",
+                    (int) retryAfter);
+        }
+        try {
+            ClientKey key = resolveClientKey(request);
+            clientAuthLimiter.onSuccess(address);
+            return key;
+        } catch (ApiException e) {
+            clientAuthLimiter.onFailure(address);
+            throw e;
         }
     }
 

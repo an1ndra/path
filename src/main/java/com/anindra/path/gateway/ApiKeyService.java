@@ -62,15 +62,23 @@ public class ApiKeyService {
 
     /** Resolve a bearer token, enforcing enabled/revoked state. */
     public ClientKey authenticate(String raw) {
+        // One error for every rejection. Distinct codes for missing/invalid/disabled turned
+        // this into a key-validity oracle: an attacker could tell a well-formed-but-unknown
+        // key from a revoked one, and 193k guesses were evaluated against it at ~474/s.
         if (raw == null || raw.isBlank()) {
-            throw ApiException.unauthorized("Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+            throw invalidKey();
         }
-        ClientKey key = findByRawKey(raw.trim())
-                .orElseThrow(() -> ApiException.unauthorized("Invalid API key.", "invalid_api_key"));
+        ClientKey key = findByRawKey(raw.trim()).orElseThrow(ApiKeyService::invalidKey);
         if (!key.isEnabled() || key.getRevokedAt() != null) {
-            throw ApiException.unauthorized("This API key has been disabled.", "key_disabled");
+            throw invalidKey();
         }
         return key;
+    }
+
+    private static ApiException invalidKey() {
+        return ApiException.unauthorized(
+                "Invalid or missing API key. Send a current key as 'Authorization: Bearer sk-gw-...'.",
+                "invalid_api_key");
     }
 
     /** Deduct spend with a row lock so parallel requests cannot lose updates. */

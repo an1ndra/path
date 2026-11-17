@@ -64,6 +64,9 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts per address before 429s |
 | `GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES` | `0` (off) | failures across all addresses in the window; only for an origin that cannot be reached except through a trusted proxy |
 | `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
+| `GATEWAY_CLIENT_AUTH_FAILURES` | `60` | rejected API keys per address per window before 429s (stops the key-validity oracle being usable as a guessing channel) |
+| `GATEWAY_CLIENT_AUTH_WINDOW` | `1m` | window for those rejections |
+| `GATEWAY_CLIENT_AUTH_GLOBAL_FAILURES` | `0` (off) | rejections across all addresses in the window |
 | `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |
 | `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |
 | `GATEWAY_PROMPT_LOG_RETENTION` | `7d` | how long prompt logs are kept |

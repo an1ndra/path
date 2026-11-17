@@ -60,7 +60,7 @@ class GatewayApiTest {
         // that wants it keyless sets gateway.public-models=true.
         mvc.perform(get("/v1/models"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("missing_api_key"));
+                .andExpect(jsonPath("$.error.code").value("invalid_api_key"));
     }
 
     @Test
@@ -87,7 +87,7 @@ class GatewayApiTest {
                                 {"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}
                                 """))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("missing_api_key"));
+                .andExpect(jsonPath("$.error.code").value("invalid_api_key"));
     }
 
     @Test
@@ -144,6 +144,19 @@ class GatewayApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths").exists())
                 .andExpect(jsonPath("$.paths['/v1/chat/completions']").exists());
+    }
+
+    @Test
+    void apiResponsesAreNotCacheable() throws Exception {
+        // A CDN caches by URL, so "…/actuator/health/x.css" can be stored and served to
+        // anonymous clients unless the origin says otherwise.
+        mvc.perform(get("/actuator/health"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
+
+        mvc.perform(get("/v1/models"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
     }
 
     @Test

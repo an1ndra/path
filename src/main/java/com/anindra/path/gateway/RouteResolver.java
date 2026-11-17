@@ -27,9 +27,32 @@ public class RouteResolver {
     private final ModelRouteRepository routes;
     private final ProviderRepository providers;
     private final ModelAliasService aliases;
+    private final com.anindra.path.admin.AliasService operatorAliases;
 
     public List<ResolvedRoute> resolve(ChatRequestSpec spec) {
         return resolve(spec, null);
+    }
+
+    /** Expands operator-defined aliases, following nested ones, bounded to avoid a loop. */
+    private List<String> expandOperatorAliases(List<String> models) {
+        List<String> expanded = new ArrayList<>();
+        for (String model : models) {
+            expandInto(model, expanded, 0);
+        }
+        return expanded;
+    }
+
+    private void expandInto(String model, List<String> out, int depth) {
+        List<String> chain = operatorAliases.chainFor(model);
+        if (chain.isEmpty() || depth > 5) {
+            if (!out.contains(model)) {
+                out.add(model);
+            }
+            return;
+        }
+        for (String hop : chain) {
+            expandInto(hop, out, depth + 1);
+        }
     }
 
     /** @param keyId used for stable canary assignment; null means no weighting. */
@@ -41,6 +64,9 @@ public class RouteResolver {
         if (!wantedModels.contains(spec.publicModel())) {
             wantedModels.add(0, spec.publicModel());
         }
+        // An operator-defined alias is a chain, not a model: expand it in place so the
+        // declared order becomes the fallback order.
+        wantedModels = expandOperatorAliases(wantedModels);
 
         List<ResolvedRoute> chain = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();

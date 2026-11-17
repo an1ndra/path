@@ -349,6 +349,37 @@ def main():
     check("responses carry X-Request-Id", bool(chat_headers.get("X-Request-Id")),
           str(chat_headers.get("X-Request-Id")))
 
+    # ----------------------------------------------------------------- aliases
+    status, _, created_alias = jreq("POST", "/admin/aliases", {
+        "alias": "smoke-alias",
+        "models": ["gpt-4o-mini", "claude-3.5-haiku"],
+        "description": "smoke chain"}, admin=True)
+    check("an operator alias can be created",
+          status == 200 and created_alias.get("resolves_to") == "gpt-4o-mini", str(created_alias)[:120])
+
+    status, _, body = jreq("POST", "/v1/chat/completions", {
+        "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("the alias serves traffic", status == 200 and body.get("choices"), str(status))
+
+    _, _, catalogue = jreq("GET", "/v1/models")
+    ids = [m["id"] for m in catalogue["data"]]
+    check("the alias appears in the catalogue", "smoke-alias" in ids, str(ids)[:120])
+
+    status, _, dup = jreq("POST", "/admin/aliases", {
+        "alias": "smoke-alias", "models": ["gpt-4o-mini"]}, admin=True)
+    check("a duplicate alias is rejected", status == 409, str(status))
+
+    status, _, bad = jreq("POST", "/admin/aliases", {
+        "alias": "broken-alias", "models": ["not-a-real-model"]}, admin=True)
+    check("an alias to an unknown model is rejected at write time",
+          status == 400 and "not-a-real-model" in bad["error"]["message"], str(bad)[:120])
+
+    status, _, _ = jreq("DELETE", "/admin/aliases/smoke-alias", admin=True)
+    check("an alias can be deleted", status == 200, str(status))
+    status, _, gone = jreq("POST", "/v1/chat/completions", {
+        "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("a deleted alias returns 404, not 500", status == 404, str(status))
+
     # ---------------------------------------------------------------- routing
     status, _, models = jreq("GET", "/v1/models", key=key)
     ids = [m["id"] for m in models.get("data", [])]

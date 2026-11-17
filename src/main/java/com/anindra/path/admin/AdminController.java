@@ -21,6 +21,7 @@ public class AdminController {
     private final AuditService audit;
     private final PromptLogService promptLogs;
     private final TenancyService tenancy;
+    private final AliasService aliasService;
 
     // ------------------------------------------------------------- providers
 
@@ -119,6 +120,32 @@ public class AdminController {
         var result = admin.rotateMasterKey(body.get("new_key"));
         audit.record("master-key.rotate", "master-key", null);
         return result;
+    }
+
+    // --------------------------------------------------------------- aliases
+
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(
+            com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AliasInput(String alias, List<String> models, String description) {
+    }
+
+    @GetMapping("/aliases")
+    public List<Map<String, Object>> aliases() {
+        return aliasService.list();
+    }
+
+    @PostMapping("/aliases")
+    public Map<String, Object> createAlias(@RequestBody AliasInput input) {
+        var created = aliasService.create(input.alias(), input.models(), input.description());
+        audit.record("alias.create", "alias:" + created.get("alias"), input);
+        return created;
+    }
+
+    @DeleteMapping("/aliases/{alias}")
+    public Map<String, Object> deleteAlias(@PathVariable String alias) {
+        aliasService.delete(alias);
+        audit.record("alias.delete", "alias:" + alias, null);
+        return Map.of("deleted", true, "alias", alias);
     }
 
     // -------------------------------------------------------------- tenancy

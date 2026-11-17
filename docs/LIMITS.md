@@ -13,6 +13,15 @@
   response (streams included) with `X-Path-Cache: hit`, billed at zero and reported as
   savings. Entries last `cache_ttl_seconds` (default 3600) and are scoped to the client
   key.
+- **Operator aliases are stable; capability aliases are not.** `POST /admin/aliases`
+  stores a chain (`prod-chat` → `claude-sonnet-4.5`, then `gpt-4o`) that resolves in that
+  order. The four built-in aliases (`cheap`, `fast`, `long-context`, `vision`) are still
+  recomputed from prices on every request, so they can move when a price changes. An
+  operator alias may shadow a built-in one, and the API flags it with
+  `shadows_computed`.
+- **Alias chains are validated at write time.** An unknown model, a self-reference or a
+  chain deeper than 10 hops is rejected with 400, so a broken alias cannot turn into a
+  500 on a customer request.
 - **Keys can be restricted to models.** `allowed_models` accepts ids and globs
   (`gpt-4o-mini,claude-*`); anything else returns 403 `model_not_allowed`.
 - **Budgets have three windows.** A key carries a lifetime credit limit plus

@@ -152,6 +152,7 @@ a smoke check. Never claim a fix without running both.
 - `Develop` is the default branch; direct pushes are allowed.
 - `main` is release-only: PR required, `Build and unit tests` + `End-to-end smoke test`
   must pass, no bypassing (admins included), no force-push, no deletion.
+- CI pins `ubuntu-26.04` (latest LTS) instead of `ubuntu-latest`; bump it deliberately.
 - Release: copy `changelog/unreleased.md` to `changelog/vX.Y.Z.md`, commit, then push a
   `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow
   publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is

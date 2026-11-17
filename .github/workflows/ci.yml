@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build:
     name: Build and unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -44,7 +44,7 @@ jobs:
 
   e2e:
     name: End-to-end smoke test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     steps:
       - uses: actions/checkout@v7

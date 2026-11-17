@@ -12,7 +12,7 @@ permissions:
 jobs:
   canary:
     name: One tiny call per provider
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

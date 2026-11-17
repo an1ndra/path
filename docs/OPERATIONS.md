@@ -72,6 +72,12 @@ curl -s 'localhost:8080/admin/audit?action=route.update&limit=50' -H "$A"
 curl -s 'localhost:8080/admin/prompt-logs?limit=20' -H "$A"
 ```
 
+## CI runners
+
+All workflows run on `ubuntu-26.04`, the current Ubuntu LTS, pinned rather than
+`ubuntu-latest` so an image migration cannot change the build under us. Bump the label
+deliberately when the next LTS ships.
+
 ## Security gates
 
 `main` only accepts a PR that passes all of these:

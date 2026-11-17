@@ -18,7 +18,7 @@ except the provider credentials you actually use.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GATEWAY_BOOTSTRAP_DEMO_KEY` | `true` | create a demo key when the table is empty |
+| `GATEWAY_BOOTSTRAP_DEMO_KEY` | `false` | create a demo key when the table is empty (ignored in `prod`) |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests per key (0 = unlimited) |
@@ -50,6 +50,9 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts before 429s |
+| `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
+| `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |
 | `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |
 | `GATEWAY_PROMPT_LOG_RETENTION` | `7d` | how long prompt logs are kept |
 | `GATEWAY_PROMPT_LOG_MAX_BYTES` | `65536` | per-body cap for prompt logs |

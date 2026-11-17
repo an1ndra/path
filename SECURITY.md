@@ -35,6 +35,7 @@ Every pull request runs:
 | New dependency review (fails on high severity) | `actions/dependency-review-action` |
 | Static analysis for Java | CodeQL |
 | Secrets and misconfiguration in the tree | Trivy |
+| Admin auth brute force (10 failures / 5 min per address) | built-in limiter |
 | Unit, integration and end-to-end tests | Maven + the smoke suite |
 
 Releases additionally scan the built container image with Trivy (fails on

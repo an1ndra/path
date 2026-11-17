@@ -44,6 +44,26 @@ public class RequestSizeFilter extends OncePerRequestFilter {
             response.flushBuffer();
             return;
         }
+        if (length < 0) {
+            // No Content-Length (chunked): enforce the limit while reading.
+            chain.doFilter(new LimitedRequest(request, props.getMaxRequestBytes()), response);
+            return;
+        }
         chain.doFilter(request, response);
+    }
+
+    private static final class LimitedRequest extends jakarta.servlet.http.HttpServletRequestWrapper {
+
+        private final long limit;
+
+        private LimitedRequest(HttpServletRequest request, long limit) {
+            super(request);
+            this.limit = limit;
+        }
+
+        @Override
+        public jakarta.servlet.ServletInputStream getInputStream() throws IOException {
+            return new LimitedInputStream(super.getInputStream(), limit);
+        }
     }
 }

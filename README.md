@@ -52,7 +52,9 @@ export GATEWAY_ADMIN_TOKEN=pick-something-long
 ./mvnw spring-boot:run
 ```
 
-First boot seeds three providers, a route table and one demo key, printed in the log:
+First boot seeds four providers and a starter route table. To also mint a demo key
+(off by default, never in the `prod` profile), start with
+`GATEWAY_BOOTSTRAP_DEMO_KEY=true`; it is printed once in the log:
 
 ```
 Created demo API key (no credit limit): sk-gw-...

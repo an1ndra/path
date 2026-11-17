@@ -38,6 +38,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private final ApiKeyService apiKeys;
     private final RateLimitStore rateLimiter;
     private final com.anindra.path.admin.TenancyService tenancy;
+    private final AdminAuthLimiter adminAuthLimiter;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
 
@@ -102,14 +103,26 @@ public class AuthFilter extends OncePerRequestFilter {
             throw ApiException.unauthorized("Invalid or missing X-Admin-Token.", "invalid_admin_token");
         }
 
+        String address = clientAddress(request);
+        long retryAfter = adminAuthLimiter.retryAfterSeconds(address);
+        if (retryAfter > 0) {
+            throw ApiException.rateLimited(
+                    "Too many failed admin authentication attempts. Retry in " + retryAfter + "s.",
+                    (int) retryAfter);
+        }
+
         com.anindra.path.admin.TenancyService.Principal principal;
         if (expected != null && !expected.isBlank() && constantTimeEquals(expected, provided)) {
+            adminAuthLimiter.onSuccess(address);
             principal = new com.anindra.path.admin.TenancyService.Principal(
                     "bootstrap", java.util.Set.of("read", "write"));
         } else {
-            principal = tenancy.authenticate(provided)
-                    .orElseThrow(() -> ApiException.unauthorized(
-                            "Invalid or missing X-Admin-Token.", "invalid_admin_token"));
+            principal = tenancy.authenticate(provided).orElse(null);
+            if (principal == null) {
+                adminAuthLimiter.onFailure(address);
+                throw ApiException.unauthorized("Invalid or missing X-Admin-Token.", "invalid_admin_token");
+            }
+            adminAuthLimiter.onSuccess(address);
         }
 
         request.setAttribute(ADMIN_PRINCIPAL_ATTR, principal);
@@ -118,6 +131,14 @@ public class AuthFilter extends OncePerRequestFilter {
         if (mutating && !principal.canWrite()) {
             throw ApiException.forbidden("This admin token has read-only scope.");
         }
+    }
+
+    private static String clientAddress(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private static boolean constantTimeEquals(String a, String b) {

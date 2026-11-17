@@ -81,6 +81,7 @@ class Handler(BaseHTTPRequestHandler):
                 {"id": "text-embedding-3-small", "object": "model"},
                 {"id": "claude-3-5-haiku-latest", "object": "model"},
                 {"id": "llama-3.3-70b-versatile", "object": "model"},
+                {"id": "acme-unknown-model", "object": "model"},
             ]
             self._json(200, {"object": "list", "data": data})
         else:

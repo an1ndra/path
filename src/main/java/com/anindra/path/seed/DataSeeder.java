@@ -35,6 +35,7 @@ public class DataSeeder implements ApplicationRunner {
     private final GatewayProperties props;
     private final SeedState seedState;
     private final com.anindra.path.repo.ProjectRepository projectsRepository;
+    private final org.springframework.core.env.Environment environment;
 
     @Override
     @Transactional
@@ -47,9 +48,12 @@ public class DataSeeder implements ApplicationRunner {
         if (projectsRepository.count() == 0) {
             projectsRepository.save(new com.anindra.path.domain.Project("default", "Default project"));
         }
-        if (props.isBootstrapDemoKey() && clientKeys.count() == 0) {
+        boolean prod = environment.acceptsProfiles(org.springframework.core.env.Profiles.of("prod"));
+        if (props.isBootstrapDemoKey() && !prod && clientKeys.count() == 0) {
             var created = apiKeys.create("demo-local", null, props.getDefaultRpmLimit());
             log.info("Created demo API key (no credit limit): {}", created.plaintext());
+        } else if (prod && props.isBootstrapDemoKey()) {
+            log.warn("Ignoring gateway.bootstrap-demo-key in the prod profile; no demo key created.");
         }
         seedState.markReady();
         log.info("Gateway ready. Admin API: {}  |  Public API: /v1/chat/completions, /v1/models",

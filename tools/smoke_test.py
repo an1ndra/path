@@ -434,18 +434,50 @@ def main():
         check("project usage rollup is available",
               "spend_today_usd" in summary and "key_count" in summary, str(summary)[:120])
 
-        # A project-wide daily budget rejects the next call from any of its keys.
+        # Reset any limit from a previous run, spend once, then set the tiny budget.
         jreq("PATCH", f"/admin/projects/{project['id']}",
-             {"daily_limit_usd": 0.000001}, admin=True)
+             {"daily_limit_usd": 1000, "monthly_limit_usd": 1000}, admin=True)
         p1, _, _ = jreq("POST", "/v1/chat/completions",
                         {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
                         key=scoped_key.get("key"))
+        jreq("PATCH", f"/admin/projects/{project['id']}",
+             {"daily_limit_usd": 0.000001}, admin=True)
         p2, _, p2body = jreq("POST", "/v1/chat/completions",
                              {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
                              key=scoped_key.get("key"))
         check("project daily budget blocks its keys",
               p1 == 200 and p2 == 402 and "Project daily" in p2body.get("error", {}).get("message", ""),
               f"{p1}/{p2} {str(p2body)[:100]}")
+
+    # ----------------------------------------------------- project reporting
+    if project:
+        status, _, scoped_usage = jreq("GET", f"/admin/usage?projectId={project['id']}&window=1h", admin=True)
+        rows = scoped_usage.get("data", [])
+        _, _, project_keys = jreq("GET", f"/admin/keys?projectId={project['id']}", admin=True)
+        project_key_ids = {k["id"] for k in project_keys}
+        scoped_ok = status == 200 and scoped_usage.get("project_id") == project["id"]
+        if rows:
+            scoped_ok = scoped_ok and all(r["key_id"] in project_key_ids for r in rows)
+        check("usage can be filtered by project", scoped_ok, str(status) + " rows=" + str(len(rows)))
+
+        status, _, scoped_stats = jreq("GET", f"/admin/stats?projectId={project['id']}&window=1h", admin=True)
+        check("stats can be scoped to a project",
+              status == 200 and scoped_stats.get("project_id") == project["id"],
+              str(scoped_stats)[:120])
+
+        status, _, csv_bytes = req("GET", f"/admin/usage/export?projectId={project['id']}&window=1h", admin=True)
+        check("export can be scoped to a project", status == 200 and b"created_at" in csv_bytes, str(status))
+
+    # -------------------------------------------------------- master key rotation
+    import base64 as _b64
+    new_master = _b64.b64encode(b"0123456789abcdef0123456789abcdef").decode()
+    status, _, rotated = jreq("POST", "/admin/rotate-master-key", {"new_key": new_master}, admin=True)
+    check("master key rotation re-encrypts credentials",
+          status == 200 and rotated.get("rotated", 0) >= 1, str(rotated)[:120])
+
+    status, _, body = jreq("POST", "/v1/chat/completions", {
+        "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "after rotation"}]}, key=key)
+    check("provider credentials still decrypt after rotation", status == 200, str(status) + str(body)[:100])
 
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
@@ -552,6 +584,15 @@ def main():
     check("POST /admin/models/sync 200", status == 200 and "created" in sync, str(status) + str(sync)[:200])
     check("sync recreated the removed model", sync.get("created", 0) >= 1, str(sync)[:200])
     check("sync reported no provider errors", sync.get("errors") == [], str(sync.get("errors")))
+
+    _, _, unpriced = jreq("GET", "/admin/routes?model=acme-unknown-model", admin=True)
+    check("unpriced synced routes stay disabled",
+          bool(unpriced) and all(not r["enabled"] for r in unpriced), str(unpriced)[:150])
+
+    status, _, body = jreq("POST", "/v1/chat/completions", {
+        "model": "acme-unknown-model", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("unpriced synced model is not callable",
+          status == 404 and body["error"]["code"] == "model_not_found", str(status))
 
     status, _, models = jreq("GET", "/v1/models", key=key)
     ids = [m["id"] for m in models.get("data", [])]

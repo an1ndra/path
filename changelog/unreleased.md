@@ -5,6 +5,10 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Added
 
+- Master-key rotation (`POST /admin/rotate-master-key`) re-encrypts every stored
+  provider credential before switching the active key.
+- Admin auth is rate limited: repeated failures from one address get 429s.
+- `projectId` filters on `/admin/usage`, `/admin/stats` and the CSV export.
 - Google Gemini as a seeded provider, using its OpenAI-compatible endpoint
   (`GEMINI_API_KEY`); chat, streaming, tools, images and embeddings all work.
 - Project-level lifetime, daily and monthly budgets, enforced across every key in the

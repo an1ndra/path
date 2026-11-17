@@ -23,6 +23,7 @@ public class CreditGuard {
 
     private static final int DEFAULT_MAX_OUTPUT = 1024;
     private static final int ESTIMATE_CAP = 8192;
+    private static final int EXPECTED_OUTPUT = 512;
 
     private final ApiKeyService apiKeys;
     private final UsageService usage;
@@ -92,17 +93,24 @@ public class CreditGuard {
         outputEstimate = Math.min(outputEstimate, ESTIMATE_CAP);
         BigDecimal worstCase = usage.cost(route.route(),
                 TokenUsage.of(promptEstimate, outputEstimate)).totalUsd();
-        if (worstCase.compareTo(remaining) > 0) {
+        // Reserve what a typical completion would cost, not the absolute cap: a small
+        // balance should not be blocked by a generous max_tokens it will never use.
+        int expectedOutput = Math.min(outputEstimate, EXPECTED_OUTPUT);
+        BigDecimal expected = usage.cost(route.route(),
+                TokenUsage.of(promptEstimate, expectedOutput)).totalUsd();
+
+        if (expected.compareTo(remaining) > 0) {
             throw ApiException.insufficientCredits(
-                    "This request could cost up to " + worstCase.toPlainString()
+                    "This request is expected to cost about " + expected.toPlainString()
                             + " USD but only " + remaining.toPlainString()
                             + " USD of credit remains. Lower max_tokens or top up the key.");
         }
-        if (!apiKeys.reserve(key.getId(), worstCase)) {
+        BigDecimal reserve = worstCase.min(remaining);
+        if (!apiKeys.reserve(key.getId(), reserve)) {
             throw ApiException.insufficientCredits(
                     "Credit is exhausted by concurrent requests. Retry shortly or top up the key.");
         }
-        return worstCase;
+        return reserve;
     }
 
     /** Comma-separated ids or globs; blank means every model. */

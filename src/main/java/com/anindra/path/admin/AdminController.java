@@ -114,6 +114,13 @@ public class AdminController {
         return admin.topUpKey(id, body.get("amount_usd"));
     }
 
+    @PostMapping("/rotate-master-key")
+    public Map<String, Object> rotateMasterKey(@RequestBody Map<String, String> body) {
+        var result = admin.rotateMasterKey(body.get("new_key"));
+        audit.record("master-key.rotate", "master-key", null);
+        return result;
+    }
+
     // -------------------------------------------------------------- tenancy
 
     @com.fasterxml.jackson.databind.annotation.JsonNaming(
@@ -188,15 +195,17 @@ public class AdminController {
     // ------------------------------------------------------------- reporting
 
     @GetMapping("/stats")
-    public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window) {
-        return reporting.stats(window);
+    public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window,
+                                     @RequestParam(required = false) Long projectId) {
+        return reporting.stats(window, projectId);
     }
 
     @GetMapping("/usage")
     public Map<String, Object> usage(@RequestParam(required = false) Long keyId,
+                                     @RequestParam(required = false) Long projectId,
                                      @RequestParam(defaultValue = "24h") String window,
                                      @RequestParam(defaultValue = "100") int limit) {
-        return reporting.usage(keyId, window, limit);
+        return reporting.usage(keyId, projectId, window, limit);
     }
 
     @PostMapping("/providers/{id}/probe")
@@ -212,6 +221,7 @@ public class AdminController {
     @GetMapping(value = "/usage/export", produces = "text/csv")
     public org.springframework.http.ResponseEntity<String> exportUsage(
             @RequestParam(required = false) Long keyId,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(defaultValue = "30d") String window,
             @RequestParam(defaultValue = "10000") int limit) {
         java.time.Duration parsed = com.anindra.path.api.Durations.cap(
@@ -219,7 +229,7 @@ public class AdminController {
                 java.time.Duration.ofDays(365));
         java.time.Instant to = java.time.Instant.now();
         java.time.Instant from = to.minus(parsed);
-        String csv = reporting.usageCsv(keyId, from, to, limit);
+        String csv = reporting.usageCsv(keyId, projectId, from, to, limit);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"usage-" + to + ".csv\"")
                 .body(csv);

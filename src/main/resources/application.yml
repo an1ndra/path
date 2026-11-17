@@ -51,7 +51,7 @@ gateway:
   # 32-byte base64 key. When empty, a key is generated and stored at master-key-path.
   master-key: ${GATEWAY_MASTER_KEY:}
   master-key-path: ${GATEWAY_MASTER_KEY_PATH:./data/master.key}
-  bootstrap-demo-key: ${GATEWAY_BOOTSTRAP_DEMO_KEY:true}
+  bootstrap-demo-key: ${GATEWAY_BOOTSTRAP_DEMO_KEY:false}
   default-rpm-limit: ${GATEWAY_DEFAULT_RPM:120}
   default-credit-limit-usd: ${GATEWAY_DEFAULT_CREDIT_USD:}
   default-max-concurrent: ${GATEWAY_DEFAULT_MAX_CONCURRENT:8}
@@ -64,6 +64,9 @@ gateway:
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
   cache:
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  admin-auth:
+    max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
+    window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
   rate-limit:
     backend: ${GATEWAY_RATE_LIMIT_BACKEND:memory}
     prefix: ${GATEWAY_RATE_LIMIT_PREFIX:path}
@@ -112,6 +115,7 @@ management:
 
 springdoc:
   api-docs:
+    enabled: ${GATEWAY_API_DOCS:true}
     path: /v3/api-docs
   swagger-ui:
     enabled: ${GATEWAY_SWAGGER_UI:false}

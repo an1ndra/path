@@ -115,12 +115,14 @@ public class UpstreamClient {
         return mapError(status, body, Map.of());
     }
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper ERROR_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
     public static UpstreamException mapError(int status, String body, Map<String, String> headers) {
         String message = body;
         String code = "upstream_error";
         try {
-            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            var node = mapper.readTree(body);
+            var node = ERROR_MAPPER.readTree(body);
             if (node.has("error")) {
                 var err = node.get("error");
                 if (err.isTextual()) {

@@ -8,6 +8,11 @@ logging:
         name: path
         version: 0.1.0
 
+# The spec describes every endpoint; keep it off on a public deployment unless asked.
+springdoc:
+  api-docs:
+    enabled: ${GATEWAY_API_DOCS:false}
+
 management:
   tracing:
     sampling:

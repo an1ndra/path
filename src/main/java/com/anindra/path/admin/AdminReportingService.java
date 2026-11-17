@@ -23,14 +23,24 @@ public class AdminReportingService {
 
     private final UsageRecordRepository usage;
     private final AdminService adminService;
+    private final com.anindra.path.repo.ClientKeyRepository keys;
 
-    public Map<String, Object> usage(Long keyId, String window, int limit) {
+    public Map<String, Object> usage(Long keyId, Long projectId, String window, int limit) {
         Duration parsed = Durations.cap(Durations.parse(window, Duration.ofHours(24)), Duration.ofDays(365));
         int capped = Math.max(1, Math.min(limit, 500));
-        List<UsageRecord> records = keyId != null
-                ? usage.findByClientKeyIdOrderByCreatedAtDesc(keyId, PageRequest.of(0, capped))
-                : usage.findByCreatedAtAfterOrderByCreatedAtDesc(
-                        java.time.Instant.now().minus(parsed), PageRequest.of(0, capped));
+        java.time.Instant from = java.time.Instant.now().minus(parsed);
+
+        List<UsageRecord> records;
+        if (keyId != null) {
+            records = usage.findByClientKeyIdOrderByCreatedAtDesc(keyId, PageRequest.of(0, capped));
+        } else if (projectId != null) {
+            List<Long> keyIds = projectKeyIds(projectId);
+            records = keyIds.isEmpty() ? List.of()
+                    : usage.findByClientKeyIdInAndCreatedAtAfterOrderByCreatedAtDesc(
+                            keyIds, from, PageRequest.of(0, capped));
+        } else {
+            records = usage.findByCreatedAtAfterOrderByCreatedAtDesc(from, PageRequest.of(0, capped));
+        }
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (UsageRecord r : records) {
@@ -75,16 +85,25 @@ public class AdminReportingService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("object", "list");
         out.put("window", parsed.toString());
+        out.put("project_id", projectId);
         out.put("count", rows.size());
         out.put("data", rows);
         return out;
     }
 
     /** Comma-separated statement of calls, one row per request, oldest first. */
-    public String usageCsv(Long keyId, java.time.Instant from, java.time.Instant to, int limit) {
+    public String usageCsv(Long keyId, Long projectId, java.time.Instant from, java.time.Instant to,
+                           int limit) {
         int capped = Math.max(1, Math.min(limit, 50_000));
-        List<UsageRecord> rows = usage.findByCreatedAtBetweenOrderByCreatedAtAsc(
-                from, to, PageRequest.of(0, capped));
+        List<UsageRecord> rows;
+        if (projectId != null) {
+            List<Long> keyIds = projectKeyIds(projectId);
+            rows = keyIds.isEmpty() ? List.of()
+                    : usage.findByClientKeyIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
+                            keyIds, from, to, PageRequest.of(0, capped));
+        } else {
+            rows = usage.findByCreatedAtBetweenOrderByCreatedAtAsc(from, to, PageRequest.of(0, capped));
+        }
 
         StringBuilder csv = new StringBuilder();
         csv.append("created_at,key_id,key_name,model,provider,upstream_model,prompt_tokens,")
@@ -132,8 +151,95 @@ public class AdminReportingService {
         return '"' + value.replace("\"", "\"\"") + '"';
     }
 
-    public Map<String, Object> stats(String window) {
+    public Map<String, Object> stats(String window, Long projectId) {
         Duration parsed = Durations.cap(Durations.parse(window, Duration.ofHours(24)), Duration.ofDays(365));
-        return adminService.stats(parsed);
+        if (projectId == null) {
+            return adminService.stats(parsed);
+        }
+        return projectStats(projectId, parsed);
+    }
+
+    /** Aggregates in Java from the project's rows; bounded so a huge project cannot OOM. */
+    private Map<String, Object> projectStats(Long projectId, Duration window) {
+        java.time.Instant from = java.time.Instant.now().minus(window);
+        List<Long> keyIds = projectKeyIds(projectId);
+        List<UsageRecord> rows = keyIds.isEmpty() ? List.of()
+                : usage.findByClientKeyIdInAndCreatedAtAfterOrderByCreatedAtDesc(
+                        keyIds, from, PageRequest.of(0, 50_000));
+
+        List<Long> latencies = rows.stream()
+                .filter(r -> r.getStatus() == UsageRecord.Status.SUCCESS)
+                .map(UsageRecord::getLatencyMs).sorted().toList();
+        List<Long> ttfts = rows.stream().map(UsageRecord::getTtftMs)
+                .filter(java.util.Objects::nonNull).sorted().toList();
+        List<java.math.BigDecimal> throughput = rows.stream().map(UsageRecord::getTokensPerSecond)
+                .filter(java.util.Objects::nonNull).sorted().toList();
+
+        long promptTokens = rows.stream().mapToLong(UsageRecord::getPromptTokens).sum();
+        long cachedTokens = rows.stream().mapToLong(UsageRecord::getCachedInputTokens).sum();
+        java.math.BigDecimal spend = rows.stream().map(UsageRecord::getCostUsd)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        java.math.BigDecimal savings = rows.stream().map(UsageRecord::getCachedSavingsUsd)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("window", window.toString());
+        out.put("project_id", projectId);
+        out.put("requests", rows.size());
+        out.put("total_tokens", rows.stream().mapToLong(UsageRecord::getTotalTokens).sum());
+        out.put("cost_usd", spend);
+        out.put("latency_ms", Map.of("p50", percentile(latencies, 0.50),
+                "p95", percentile(latencies, 0.95), "p99", percentile(latencies, 0.99)));
+        out.put("ttft_ms", Map.of("p50", percentile(ttfts, 0.50), "p95", percentile(ttfts, 0.95)));
+
+        Map<String, Object> cache = new java.util.LinkedHashMap<>();
+        cache.put("prompt_tokens", promptTokens);
+        cache.put("cached_input_tokens", cachedTokens);
+        cache.put("hit_ratio", promptTokens == 0 ? 0.0
+                : java.math.BigDecimal.valueOf(cachedTokens)
+                        .divide(java.math.BigDecimal.valueOf(promptTokens), 4,
+                                java.math.RoundingMode.HALF_UP).doubleValue());
+        cache.put("savings_usd", savings);
+        out.put("cache", cache);
+        out.put("fallback_requests", rows.stream().filter(r -> r.getAttempts() > 1).count());
+        out.put("estimated_usage_requests", rows.stream().filter(UsageRecord::isUsageEstimated).count());
+
+        Map<String, Object> byProvider = new java.util.LinkedHashMap<>();
+        rows.stream().filter(r -> r.getProviderSlug() != null)
+                .collect(java.util.stream.Collectors.groupingBy(UsageRecord::getProviderSlug))
+                .forEach((slug, list) -> byProvider.put(slug, Map.of(
+                        "requests", list.size(),
+                        "cost_usd", list.stream().map(UsageRecord::getCostUsd)
+                                .filter(java.util.Objects::nonNull)
+                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add))));
+        out.put("by_provider", byProvider);
+
+        List<Map<String, Object>> byModel = new java.util.ArrayList<>();
+        rows.stream().filter(r -> r.getPublicModelId() != null)
+                .collect(java.util.stream.Collectors.groupingBy(UsageRecord::getPublicModelId))
+                .forEach((model, list) -> byModel.add(Map.of(
+                        "model", model,
+                        "requests", list.size(),
+                        "tokens", list.stream().mapToLong(UsageRecord::getTotalTokens).sum(),
+                        "cost_usd", list.stream().map(UsageRecord::getCostUsd)
+                                .filter(java.util.Objects::nonNull)
+                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add))));
+        out.put("by_model", byModel);
+        return out;
+    }
+
+    private List<Long> projectKeyIds(Long projectId) {
+        return keys.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
+                .map(com.anindra.path.domain.ClientKey::getId).toList();
+    }
+
+    private static long percentile(List<Long> sorted, double p) {
+        if (sorted.isEmpty()) {
+            return 0;
+        }
+        int index = (int) Math.ceil(p * sorted.size()) - 1;
+        return sorted.get(Math.max(0, Math.min(index, sorted.size() - 1)));
     }
 }

@@ -34,7 +34,7 @@ public class GatewayProperties {
     private String masterKeyPath = "./data/master.key";
 
     /** Create a demo client key on boot when the key table is empty. */
-    private boolean bootstrapDemoKey = true;
+    private boolean bootstrapDemoKey = false;
 
     private int defaultRpmLimit = 120;
 
@@ -62,6 +62,7 @@ public class GatewayProperties {
     private Alerts alerts = new Alerts();
     private PromptLogging promptLogging = new PromptLogging();
     private RateLimit rateLimit = new RateLimit();
+    private AdminAuth adminAuth = new AdminAuth();
 
     @Getter
     @Setter
@@ -72,6 +73,14 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class AdminAuth {
+        /** Failed admin auth attempts allowed per window before 429s start. */
+        private int maxFailures = 10;
+        private Duration window = Duration.ofMinutes(5);
     }
 
     @Getter

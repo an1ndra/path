@@ -98,6 +98,25 @@ class CreditGuardTest {
     }
 
     @Test
+    void reservesTheExpectedCostRatherThanTheMaxTokensCap() throws Exception {
+        ClientKey key = key(null, null, null);
+        key.setCreditLimitUsd(new BigDecimal("0.001"));
+        key.setUsedUsd(BigDecimal.ZERO);
+        when(apiKeys.remaining(any())).thenReturn(new BigDecimal("0.001"));
+        when(apiKeys.reserve(eq(1L), any())).thenReturn(true);
+        when(usage.cost(any(), any())).thenReturn(
+                new UsageService.CostBreakdown(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("0.0100")),
+                new UsageService.CostBreakdown(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("0.0005")));
+
+        // max_tokens is 8000, but a typical completion fits in the remaining balance.
+        BigDecimal reserved = guard.check(key, spec("8000"), route());
+
+        assertThat(reserved).isEqualByComparingTo("0.001");
+    }
+
+    @Test
     void blocksAModelOutsideTheAllowlist() throws Exception {
         ClientKey key = key(null, null, null);
         key.setAllowedModels("gpt-4o-mini");

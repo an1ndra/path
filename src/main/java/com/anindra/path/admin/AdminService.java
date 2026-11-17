@@ -193,6 +193,47 @@ public class AdminService {
         return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
     }
 
+    // ------------------------------------------------------------ master key
+
+    /**
+     * Re-encrypts every stored provider credential under a new master key. All
+     * ciphertexts are written before the key is swapped, so a failure leaves the old
+     * key valid.
+     */
+    @Transactional
+    public Map<String, Object> rotateMasterKey(String newKeyBase64) {
+        byte[] newKey;
+        try {
+            newKey = SecretCipher.parseKey(newKeyBase64 == null ? "" : newKeyBase64);
+        } catch (Exception e) {
+            throw ApiException.badRequest(
+                    "new_key must be a base64 encoded 32-byte key (openssl rand -base64 32).",
+                    "new_key");
+        }
+
+        java.util.List<Provider> all = providers.findAll();
+        java.util.Map<Long, String> reencrypted = new java.util.LinkedHashMap<>();
+        for (Provider provider : all) {
+            if (provider.getApiKeyCipher() == null || provider.getApiKeyCipher().isBlank()) {
+                continue;
+            }
+            String plaintext = cipher.decrypt(provider.getApiKeyCipher());
+            reencrypted.put(provider.getId(), SecretCipher.encryptWith(newKey, plaintext));
+        }
+
+        for (var entry : reencrypted.entrySet()) {
+            providers.findById(entry.getKey()).ifPresent(p -> p.setApiKeyCipher(entry.getValue()));
+        }
+        providers.flush();
+        cipher.rotate(newKey);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rotated", reencrypted.size());
+        out.put("providers", all.size());
+        out.put("note", "Update GATEWAY_MASTER_KEY before the next restart.");
+        return out;
+    }
+
     // ----------------------------------------------------------------- routes
 
     public List<Map<String, Object>> listRoutes(String publicModelId) {

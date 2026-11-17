@@ -35,6 +35,7 @@ public class InMemoryRateLimitStore implements RateLimitStore {
         return retryAfter[0];
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 300_000)
     void evictStale() {
         long cutoff = Instant.now().getEpochSecond() / 60 - 10;
         windows.entrySet().removeIf(e -> e.getValue().minute() < cutoff);

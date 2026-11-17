@@ -41,6 +41,13 @@
   total can differ from the exact product by at most 1e-8 USD.
 - **Streaming has no resume.** Once bytes are sent the route cannot change; failures
   arrive as an SSE error object followed by `data: [DONE]`.
+- **Unpriced synced models are disabled.** `/admin/models/sync` imports unknown ids with
+  `enabled=false`, so a model cannot serve traffic for free before someone sets its price.
+- **Reservations use the expected cost, not the cap.** A call reserves what a typical
+  completion costs (512 output tokens) while still refusing when that estimate exceeds the
+  balance, so a big `max_tokens` no longer blocks a small balance.
+- **Admin auth is rate limited.** Ten failed attempts from one address in five minutes get
+  429s; a successful auth clears the counter.
 - **Usage history is pruned.** Rows older than `GATEWAY_USAGE_RETENTION` (default 180
   days) are deleted nightly; set it to `0` to keep history forever and plan for
   partitioning at that point.
@@ -82,6 +89,7 @@
 
 **Operational**
 
+- **`/v3/api-docs` is off in the prod profile** unless `GATEWAY_API_DOCS=true`.
 - **Idempotency applies to chat only.** `/v1/embeddings` honours drain, concurrency and
   budgets, but not `Idempotency-Key` or the response cache.
 - **Model sync pricing uses a built-in table.** Ids in `ModelSyncService.PRICES` get a

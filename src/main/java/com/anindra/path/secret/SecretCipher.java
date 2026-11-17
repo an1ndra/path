@@ -24,7 +24,7 @@ public class SecretCipher {
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
 
-    private final SecretKeySpec key;
+    private volatile SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
 
     public SecretCipher(GatewayProperties props) {
@@ -62,6 +62,15 @@ public class SecretCipher {
     }
 
     public String encrypt(String plaintext) {
+        return encryptWith(key, plaintext, random);
+    }
+
+    /** Encrypts under an explicit key; used when rotating the master key. */
+    public static String encryptWith(byte[] rawKey, String plaintext) {
+        return encryptWith(new SecretKeySpec(rawKey, "AES"), plaintext, new SecureRandom());
+    }
+
+    private static String encryptWith(SecretKeySpec key, String plaintext, SecureRandom random) {
         if (plaintext == null) {
             return null;
         }
@@ -78,6 +87,20 @@ public class SecretCipher {
         } catch (Exception e) {
             throw new IllegalStateException("Cannot encrypt provider credential", e);
         }
+    }
+
+    /** Validates and decodes a base64 32-byte master key. */
+    public static byte[] parseKey(String base64) {
+        byte[] raw = Base64.getDecoder().decode(base64.trim());
+        if (raw.length != 32) {
+            throw new IllegalArgumentException("master key must decode to exactly 32 bytes");
+        }
+        return raw;
+    }
+
+    /** Switches the active key; callers must have re-encrypted stored ciphertext first. */
+    public void rotate(byte[] rawKey) {
+        this.key = new SecretKeySpec(rawKey, "AES");
     }
 
     public String decrypt(String encoded) {

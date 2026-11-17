@@ -66,6 +66,9 @@ public class DataSeeder implements ApplicationRunner {
                 new Provider("anthropic", "Anthropic", ProviderType.ANTHROPIC, "https://api.anthropic.com/v1"))));
         bySlug.put("groq", providers.findBySlug("groq").orElseGet(() -> providers.save(
                 new Provider("groq", "Groq", ProviderType.OPENAI, "https://api.groq.com/openai/v1"))));
+        bySlug.put("gemini", providers.findBySlug("gemini").orElseGet(() -> providers.save(
+                new Provider("gemini", "Google Gemini", ProviderType.OPENAI,
+                        "https://generativelanguage.googleapis.com/v1beta/openai"))));
         return bySlug;
     }
 

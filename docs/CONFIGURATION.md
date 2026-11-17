@@ -69,7 +69,7 @@ way, so they are correct in a cluster regardless of this setting.
 
 | Variable | Meaning |
 |---|---|
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` | credentials for the seeded providers |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` | credentials for the seeded providers |
 | `GATEWAY_UPSTREAM_<SLUG>_KEY` | credential for any other provider slug (e.g. `GATEWAY_UPSTREAM_TOGETHER_KEY`) |
 
 Resolution order: **database → `application.yml` → environment**. A key stored through
@@ -77,8 +77,34 @@ the admin API silently wins over the environment, which makes rotation possible 
 a restart. Credentials in the database are AES-GCM encrypted with a key from
 `GATEWAY_MASTER_KEY` or the generated `./data/master.key` (0600).
 
-A provider row must exist before its environment variable is read; only `openai`,
-`anthropic` and `groq` are seeded.
+A provider row must exist before its environment variable is read; `openai`, `anthropic`,
+`groq` and `gemini` are seeded.
+
+### Gemini
+
+Gemini is seeded as an `OPENAI`-type provider pointing at Google's
+OpenAI-compatible endpoint:
+
+```
+base_url = https://generativelanguage.googleapis.com/v1beta/openai
+```
+
+Set `GEMINI_API_KEY` and add a route per model you want to expose; the upstream id is
+whatever Gemini calls it (`gemini-2.5-flash`, `gemini-3-flash`, …):
+
+```bash
+A='X-Admin-Token: ...'
+curl -s -X POST localhost:8080/admin/routes -H "$A" -H 'Content-Type: application/json' \
+  -d '{"public_model_id":"gemini-2.5-flash","provider_id":4,
+       "upstream_model_id":"gemini-2.5-flash",
+       "input_price_per_million":0.30,"output_price_per_million":2.50,
+       "priority":10}'
+```
+
+`POST /admin/models/sync` imports Gemini's list (image and embedding ids are filtered
+out) but leaves unknown prices at 0.00, so set them from Google's pricing page before
+sending traffic. The native `generateContent` protocol is not used; the compatible layer
+covers chat, streaming, tools, images and embeddings.
 
 ## Database
 

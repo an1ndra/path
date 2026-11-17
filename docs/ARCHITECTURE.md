@@ -23,7 +23,7 @@ Two wire formats cover every provider worth proxying:
 
 | Type | Speaks | Works with |
 |---|---|---|
-| `OPENAI` | chat-completions | OpenAI, Groq, Together, Fireworks, DeepSeek, vLLM, LM Studio, Ollama's `/v1`, any compatible endpoint |
+| `OPENAI` | chat-completions | OpenAI, Groq, Google Gemini (compatible endpoint), Together, Fireworks, DeepSeek, vLLM, LM Studio, Ollama's `/v1`, any compatible endpoint |
 | `ANTHROPIC` | Messages API | Anthropic (native, with prompt caching and tool calls) |
 
 Any other provider is a configuration change, not a code change: register it with

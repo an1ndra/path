@@ -121,6 +121,7 @@ public class GatewayProperties {
         private ProviderKey openai = new ProviderKey();
         private ProviderKey anthropic = new ProviderKey();
         private ProviderKey groq = new ProviderKey();
+        private ProviderKey gemini = new ProviderKey();
     }
 
     @Getter

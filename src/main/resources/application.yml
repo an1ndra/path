@@ -86,6 +86,8 @@ gateway:
       api-key: ${ANTHROPIC_API_KEY:}
     groq:
       api-key: ${GROQ_API_KEY:}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
 
 management:
   endpoints:

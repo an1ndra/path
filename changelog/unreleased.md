@@ -5,6 +5,8 @@ Notes for the next release. Nothing is published from this file; copy it to
 
 ## Added
 
+- Google Gemini as a seeded provider, using its OpenAI-compatible endpoint
+  (`GEMINI_API_KEY`); chat, streaming, tools, images and embeddings all work.
 - Project-level lifetime, daily and monthly budgets, enforced across every key in the
   project, plus `GET /admin/projects/{id}/usage` rollups.
 - Streaming prompt logs: the captured SSE payload is stored alongside non-streaming

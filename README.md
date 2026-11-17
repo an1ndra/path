@@ -5,8 +5,9 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 A provider-agnostic LLM gateway. One HTTP surface in front of every provider you use —
-OpenAI, Anthropic, Groq, and anything OpenAI-compatible — with model routing, automatic
-fallback, per-key credits and cache-aware token metering. Spring Boot 3.5, Java 21.
+OpenAI, Anthropic, Groq, Google Gemini, and anything OpenAI-compatible — with model
+routing, automatic fallback, per-key credits and cache-aware token metering.
+Spring Boot 3.5, Java 21.
 
 Clients speak the OpenAI chat-completions shape because that is what most SDKs already
 implement. The gateway translates to each provider's native protocol, so adding or
@@ -27,8 +28,8 @@ flowchart LR
 
 ## What it does
 
-- **One surface, many providers** — OpenAI, Anthropic, Groq and any OpenAI-compatible
-  endpoint, including streaming and tool calls.
+- **One surface, many providers** — OpenAI, Anthropic, Groq, Google Gemini and any
+  OpenAI-compatible endpoint, including streaming and tool calls.
 - **Routing and fallback** — a model id maps to an ordered chain; 429/5xx/timeouts fall
   through, with capability aliases (`cheap`, `fast`, `long-context`) and weighted canary
   splits.

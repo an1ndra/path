@@ -44,6 +44,17 @@ flowchart LR
 - **Operable** — Flyway migrations, health/readiness, Prometheus metrics, tracing,
   structured logs, an admin audit trail and an OpenAPI spec.
 
+## Install on Kubernetes
+
+```bash
+helm install path deploy/helm/path --namespace path --create-namespace \
+  --set existingSecret=path-credentials
+```
+
+The chart refuses to render when `terminationGracePeriodSeconds` is not above
+`GATEWAY_DRAIN_TIMEOUT`, because that combination truncates live SSE streams on a
+rolling update. See [deploy/helm/path/README.md](deploy/helm/path/README.md) for the rest.
+
 ## Quick start
 
 ```bash

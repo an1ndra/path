@@ -1,0 +1,33 @@
+Path is running in the {{ .Release.Namespace }} namespace.
+
+  In-cluster URL: http://{{ include "path.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+Check it once it is up:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "path.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s localhost:{{ .Values.service.port }}/actuator/health
+  curl -s -H "X-Admin-Token: $GATEWAY_ADMIN_TOKEN" localhost:{{ .Values.service.port }}/actuator/health/providers
+
+The provider health group is the one to watch: overall health stays UP while fallback
+exists, and only a total outage reports OUT_OF_SERVICE.
+
+Resources:
+{{- if .Values.postgres.enabled }}
+  * Postgres: a StatefulSet with a {{ .Values.postgres.persistence.size }} volume. For
+    anything real, point config.dbUrl at a managed database instead.
+{{- end }}
+{{- if .Values.valkey.enabled }}
+  * Valkey: shared rate limiting and a shared view of rate-limit state.
+{{- end }}
+{{- if not .Values.valkey.enabled }}
+  * Valkey is off, so rate limiting is per pod and the effective limit is
+    {{ .Values.replicaCount }}x the configured rpm. Enable it before trusting a cluster.
+{{- end }}
+
+Before exposing this to clients:
+
+  * set GATEWAY_ADMIN_TOKEN and GATEWAY_MASTER_KEY in {{ include "path.secretName" . }}
+  * keep GATEWAY_API_DOCS=false in production
+  * terminationGracePeriodSeconds ({{ .Values.terminationGracePeriodSeconds }}s) must stay
+    above GATEWAY_DRAIN_TIMEOUT ({{ .Values.drainTimeoutSeconds }}s) or a rolling update
+    truncates live SSE streams; the chart refuses to render if that is violated

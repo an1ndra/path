@@ -42,6 +42,41 @@ jobs:
           path: target/surefire-reports/
           retention-days: 7
 
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Lint
+        run: helm lint deploy/helm/path --set existingSecret=path-credentials
+
+      - name: Render every toggle
+        run: |
+          helm template path deploy/helm/path --set existingSecret=x > /dev/null
+          helm template path deploy/helm/path --set existingSecret=x \
+            --set autoscaling.enabled=true --set postgres.enabled=true \
+            --set valkey.enabled=true --set serviceMonitor.enabled=true > /dev/null
+
+      - name: No credentials are rendered inline
+        run: |
+          if helm template path deploy/helm/path --set existingSecret=x | grep -q "kind: Secret"; then
+            echo "::error::The chart rendered a Secret while existingSecret was set"
+            exit 1
+          fi
+
+      - name: The drain guard must fail closed
+        run: |
+          if helm template path deploy/helm/path --set existingSecret=x \
+              --set drainTimeoutSeconds=60 --set terminationGracePeriodSeconds=30 > /dev/null 2>&1; then
+            echo "::error::The chart rendered with a grace period below the drain timeout"
+            exit 1
+          fi
+
   e2e:
     name: End-to-end smoke test
     runs-on: ubuntu-26.04

@@ -383,6 +383,11 @@ def main():
     check("embeddings reject Anthropic routes", status == 501
           and ebody["error"]["code"] == "unsupported_endpoint", str(status))
 
+    # ------------------------------------------------------------ prompt logs
+    status, _, plogs = jreq("GET", "/admin/prompt-logs?limit=5", admin=True)
+    check("prompt log endpoint responds (disabled by default)",
+          status == 200 and isinstance(plogs, list), str(status))
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

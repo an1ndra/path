@@ -19,6 +19,7 @@ public class AdminController {
     private final ModelSyncService modelSync;
     private final ProviderProbeService probes;
     private final AuditService audit;
+    private final PromptLogService promptLogs;
 
     // ------------------------------------------------------------- providers
 
@@ -156,6 +157,12 @@ public class AdminController {
     public List<Map<String, Object>> auditLog(@RequestParam(required = false) String action,
                                               @RequestParam(defaultValue = "100") int limit) {
         return audit.list(action, limit);
+    }
+
+    @GetMapping("/prompt-logs")
+    public List<Map<String, Object>> promptLogs(@RequestParam(required = false) Long keyId,
+                                                @RequestParam(defaultValue = "50") int limit) {
+        return promptLogs.list(keyId, limit);
     }
 
     @PostMapping("/models/sync")

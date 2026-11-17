@@ -64,6 +64,10 @@ gateway:
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
   cache:
     max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  prompt-logging:
+    enabled: ${GATEWAY_PROMPT_LOGGING:false}
+    retention: ${GATEWAY_PROMPT_LOG_RETENTION:7d}
+    max-body-bytes: ${GATEWAY_PROMPT_LOG_MAX_BYTES:65536}
   alerts:
     webhook-url: ${GATEWAY_ALERT_WEBHOOK:}
     cooldown: ${GATEWAY_ALERT_COOLDOWN:1h}

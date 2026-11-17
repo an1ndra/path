@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (66)
+# unit + integration tests (70)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (97 checks, no real keys)
+# full end-to-end suite against a mock upstream (98 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -54,7 +54,7 @@ com.anindra.path
 │   ├── RouteResolver             public model id → ordered chain (aliases, weights)
 │   ├── ModelAliasService         cheap/fast/long-context/vision
 │   ├── EmbeddingsService         /v1/embeddings for OPENAI-type providers
-│   └── (admin) AuditService, AlertService
+│   └── (admin) AuditService, AlertService, PromptLogService
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
 │   └── TokenUsage                normalised token accounting
@@ -122,7 +122,7 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 - `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
 - `CreditGuardTest` — budget windows and max_tokens clamping.
 - `DrainStateTest` — in-flight accounting and refusal while draining.
-- `tools/smoke_test.py` — 97 checks against `tools/mock-upstream.py`. The mock can
+- `tools/smoke_test.py` — 98 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -159,6 +159,9 @@ a smoke check. Never claim a fix without running both.
   test found this; keep the guard.
 - **`tools/load-test.js`** is a k6 script, not part of CI (it needs a running gateway and
   a real key).
+- **Prompt logging is a PII store.** Off by default; when enabled it redacts provider
+  keys and bearer tokens, but it still stores user prompts. Retention is enforced by a
+  scheduled purge.
 - **Audit and alert writes must never break the operation.** Both swallow their own
   failures and log a warning.
 - **Aliases are computed from the route table on every resolve**, so editing a price can

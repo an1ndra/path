@@ -279,6 +279,9 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for operational alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |
+| `GATEWAY_PROMPT_LOG_RETENTION` | `7d` | how long prompt logs are kept |
+| `GATEWAY_PROMPT_LOG_MAX_BYTES` | `65536` | per-body cap for prompt logs |
 | `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
 | `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
@@ -370,6 +373,11 @@ python3 tools/smoke_test.py        # 49 checks
   replays the stored response — streams included — with `X-Path-Cache: hit`, billed at
   zero and reported as savings. Entries last `cache_ttl_seconds` (default 3600) and are
   scoped to the client key, so tenants cannot read each other's completions.
+- **Prompt logging is off by default and redacted when on.** Enable with
+  `GATEWAY_PROMPT_LOGGING=true`; bodies are scrubbed of `sk-`/`gsk_`/`Bearer` tokens,
+  capped at `GATEWAY_PROMPT_LOG_MAX_BYTES`, and deleted after the retention window.
+  Read them at `GET /admin/prompt-logs`. Turning this on creates a PII store — treat the
+  retention setting as a compliance decision.
 - **Every admin mutation is audited.** Provider, route and key changes are recorded with
   the before/after payload and readable at `GET /admin/audit?action=route.update`.
 - **Alerts are webhook-based and deduplicated.** Set `GATEWAY_ALERT_WEBHOOK` to receive

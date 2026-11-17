@@ -50,6 +50,7 @@ public class ChatCompletionsController {
     private final ConcurrencyLimiter concurrency;
     private final com.anindra.path.gateway.DrainState drain;
     private final GatewayProperties props;
+    private final com.anindra.path.admin.PromptLogService promptLogs;
     private final Tracer tracer;
 
     @Operation(summary = "Create a chat completion", description = "Streaming when stream=true")
@@ -121,6 +122,10 @@ public class ChatCompletionsController {
         if (idempotencyKey != null) {
             idempotency.complete(key.getId(), idempotencyKey, 200,
                     MediaType.APPLICATION_JSON_VALUE, result.body().toString());
+        }
+        if (promptLogs.enabled()) {
+            promptLogs.record(key.getId(), org.slf4j.MDC.get("requestId"), spec.publicModel(),
+                    body.toString(), result.body().toString());
         }
 
         return ResponseEntity.ok()

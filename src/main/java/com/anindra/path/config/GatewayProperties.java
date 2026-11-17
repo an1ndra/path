@@ -57,6 +57,7 @@ public class GatewayProperties {
     private Idempotency idempotency = new Idempotency();
     private Cache cache = new Cache();
     private Alerts alerts = new Alerts();
+    private PromptLogging promptLogging = new PromptLogging();
 
     @Getter
     @Setter
@@ -67,6 +68,15 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+    }
+
+    @Getter
+    @Setter
+    public static class PromptLogging {
+        /** Off by default: storing prompts creates a PII/secret store. */
+        private boolean enabled = false;
+        private Duration retention = Duration.ofDays(7);
+        private int maxBodyBytes = 65_536;
     }
 
     @Getter

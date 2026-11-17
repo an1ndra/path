@@ -1,5 +1,9 @@
 # API reference
 
+A machine-readable OpenAPI 3 document is served at `/v3/api-docs` (Swagger UI at
+`/swagger-ui.html` when `GATEWAY_SWAGGER_UI=true`). Everything below is the same
+contract in prose.
+
 Base URL: `http://localhost:8080` (override with `PORT`).
 
 Two auth schemes:

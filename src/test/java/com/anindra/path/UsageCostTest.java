@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class UsageCostTest {
 
-    private final UsageService service = new UsageService(null, null);
+    private final UsageService service = new UsageService(null, null, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static ModelRoute route(String input, String cached, String output, String write) {

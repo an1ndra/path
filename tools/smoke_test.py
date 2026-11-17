@@ -323,6 +323,20 @@ def main():
     check("usage export contains rows", len(csv_text.strip().splitlines()) > 1,
           str(len(csv_text.splitlines())))
 
+    # ------------------------------------------------- metrics, docs, tracing
+    status, docs_headers, docs = jreq("GET", "/v3/api-docs")
+    check("OpenAPI spec is served", status == 200 and "/v1/chat/completions" in json.dumps(docs), str(status))
+
+    status, _, prom = jreq("GET", "/actuator/prometheus")
+    check("Prometheus metrics are exposed",
+          status == 200 and "path_requests_total" in prom.get("_raw", ""), str(status))
+
+    status, chat_headers, _ = jreq("POST", "/v1/chat/completions",
+                                   {"model": "gpt-4o-mini",
+                                    "messages": [{"role": "user", "content": "id please"}]}, key=key)
+    check("responses carry X-Request-Id", bool(chat_headers.get("X-Request-Id")),
+          str(chat_headers.get("X-Request-Id")))
+
     # ------------------------------------------------------------ auth and errors
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}, key="sk-gw-nope")

@@ -16,10 +16,10 @@ dependency: the gateway translates to each provider's native protocol.
 ## TL;DR
 
 ```bash
-# unit + integration tests (55)
+# unit + integration tests (57)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (87 checks, no real keys)
+# full end-to-end suite against a mock upstream (90 checks, no real keys)
 python3 tools/mock-upstream.py 9099 &
 GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
 python3 tools/smoke_test.py
@@ -50,6 +50,7 @@ com.anindra.path
 │   ├── ConcurrencyLimiter        per-key in-flight permits
 │   ├── ResponseCacheService      exact-match replay, opt-in per route
 │   ├── DrainState                shutdown drain + readiness
+│   └── (config) RequestIdFilter  X-Request-Id + MDC correlation
 │   ├── RouteResolver             public model id → ordered chain
 │   ├── CreditGuard               pre-flight balance/worst-case check
 │   ├── UsageService              cost breakdown, aggregates, metering
@@ -118,7 +119,7 @@ startup; a mismatch fails the boot. Tests run the same migrations against in-mem
 - `ResponseCacheEligibilityTest` / `ResponseCacheServiceTest` — cache rules, scoping, expiry.
 - `CreditGuardTest` — budget windows and max_tokens clamping.
 - `DrainStateTest` — in-flight accounting and refusal while draining.
-- `tools/smoke_test.py` — 87 checks against `tools/mock-upstream.py`. The mock can
+- `tools/smoke_test.py` — 90 checks against `tools/mock-upstream.py`. The mock can
   simulate failures by model id: `boom` (500), `ratelimit` (429), `unauthorized` (401),
   `badrequest` (400), `slow`, `empty`.
 
@@ -150,6 +151,10 @@ a smoke check. Never claim a fix without running both.
 - **Shutdown drains for `GATEWAY_DRAIN_TIMEOUT`.** `DrainState` flips readiness and
   refuses new chat requests while streams finish; keep the value below your orchestrator's
   termination grace period.
+- **Tracing is off by default** (`GATEWAY_TRACE_SAMPLE=0`). Raising the probability
+  without setting `OTEL_EXPORTER_OTLP_ENDPOINT` produces export warnings, not traces.
+- **The `prod` profile switches logs to ECS JSON.** `requestId` comes from
+  `RequestIdFilter`'s MDC entry; `traceId`/`spanId` are added by the tracing bridge.
 - **Rate limiting is in-memory**, one node. Running two instances doubles the effective
   RPM limit.
 - **H2 rejects `AUTO_SERVER=TRUE` together with `DB_CLOSE_ON_EXIT`.** Don't re-add it.

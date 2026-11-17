@@ -111,6 +111,22 @@ class GatewayApiTest {
     }
 
     @Test
+    void openApiSpecIsPublished() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths").exists())
+                .andExpect(jsonPath("$.paths['/v1/chat/completions']").exists());
+    }
+
+    @Test
+    void everyResponseCarriesARequestId() throws Exception {
+        mvc.perform(get("/v1/models"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().exists("X-Request-Id"));
+    }
+
+    @Test
     void adminRequiresToken() throws Exception {
         mvc.perform(get("/admin/providers"))
                 .andExpect(status().isUnauthorized());

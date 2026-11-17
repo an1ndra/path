@@ -221,7 +221,10 @@ Admin JSON accepts snake_case (`credit_limit_usd`) and camelCase (`creditLimitUs
 | GET | `/v1/models/{id}` | same | one model |
 | GET | `/v1/usage?window=24h` | bearer key | this key's tokens, spend, recent calls |
 | GET | `/v1/credits` | bearer key | limit, used, remaining |
-| GET | `/actuator/health` | none | liveness |
+| GET | `/actuator/health` | none | liveness + readiness |
+| GET | `/actuator/prometheus` | none | metrics scrape endpoint |
+| GET | `/v3/api-docs` | none | OpenAPI 3 document |
+| GET | `/swagger-ui.html` | none | Swagger UI (when `GATEWAY_SWAGGER_UI=true`) |
 
 Errors use the OpenAI envelope:
 
@@ -253,6 +256,8 @@ Codes include `missing_api_key`, `invalid_api_key`, `key_disabled`,
 | `GATEWAY_MAX_REQUEST_BYTES` | `1048576` | request bodies larger than this get 413 |
 | `GATEWAY_MAX_OUTPUT_TOKENS` | `0` (off) | hard cap on `max_tokens` for every request |
 | `GATEWAY_DRAIN_TIMEOUT` | `30s` | how long shutdown waits for in-flight streams |
+| `GATEWAY_SWAGGER_UI` | `false` | serve Swagger UI at `/swagger-ui.html` |
+| `GATEWAY_TRACE_SAMPLE` | `0` | trace sampling probability (0 disables export) |
 | `GATEWAY_BREAKER_FAILURES` | `5` | consecutive upstream failures before a provider is parked |
 | `GATEWAY_BREAKER_OPEN` | `30s` | how long a parked provider is skipped |
 | `GATEWAY_MAX_ATTEMPTS` | `3` | routes tried per request, including the first |
@@ -279,6 +284,20 @@ export DB_USER=aigateway DB_PASSWORD=aigateway
 ```
 
 or `docker compose up --build`.
+
+## Observability
+
+- **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,
+  streamed), `path_latency_seconds`, `path_tokens_total` (prompt/completion/cached),
+  `path_cost_usd_total`, `path_cache_hits_total`.
+- **Traces** via Micrometer + OpenTelemetry. Off by default (`GATEWAY_TRACE_SAMPLE=0`);
+  set a sampling probability and `OTEL_EXPORTER_OTLP_ENDPOINT` to export.
+- **Correlation** — every response carries `X-Request-Id`, echoed into the MDC, which
+  also appears as `requestId`/`traceId`/`spanId` in structured logs.
+- **Structured logs** — the `prod` profile emits ECS JSON
+  (`SPRING_PROFILES_ACTIVE=prod`); the default profile stays human-readable.
+- **OpenAPI** — springdoc publishes `/v3/api-docs`; CI uploads the generated spec as a
+  build artifact so drift is visible.
 
 ## Schema migrations
 

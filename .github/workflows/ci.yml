@@ -70,6 +70,8 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:8080/actuator/health
+          curl -sf http://127.0.0.1:8080/v3/api-docs -o /tmp/opencode/openapi.json
+          test -s /tmp/opencode/openapi.json
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8080/v1/models | grep -q 'gpt-4o-mini'; then
               echo "catalogue seeded after ${i}s"
@@ -78,6 +80,14 @@ jobs:
             sleep 1
           done
           python3 tools/smoke_test.py
+
+      - name: Upload OpenAPI spec
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: openapi
+          path: /tmp/opencode/openapi.json
+          retention-days: 14
 
       - name: Show gateway log on failure
         if: failure()

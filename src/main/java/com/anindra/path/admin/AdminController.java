@@ -11,6 +11,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
+@io.swagger.v3.oas.annotations.tags.Tag(name = "Admin", description = "Configuration, keys, operations and reporting")
 public class AdminController {
 
     private final AdminService admin;

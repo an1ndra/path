@@ -13,6 +13,10 @@ import com.anindra.path.gateway.RouteResolver;
 import com.anindra.path.gateway.StreamService;
 import com.anindra.path.gateway.UsageService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v1")
 @RequiredArgsConstructor
+@Tag(name = "Chat", description = "OpenAI-compatible chat, catalogue and usage")
 public class ChatCompletionsController {
 
     public static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
@@ -44,7 +49,9 @@ public class ChatCompletionsController {
     private final ConcurrencyLimiter concurrency;
     private final com.anindra.path.gateway.DrainState drain;
     private final GatewayProperties props;
+    private final Tracer tracer;
 
+    @Operation(summary = "Create a chat completion", description = "Streaming when stream=true")
     @PostMapping("/chat/completions")
     public ResponseEntity<?> chatCompletions(
             @RequestBody ObjectNode body,
@@ -65,7 +72,14 @@ public class ChatCompletionsController {
                 throw ApiException.tooManyConcurrent(limit);
             }
             try {
-                return handle(body, key, request, response);
+                Span span = tracer.nextSpan().name("chat.completions").start();
+                try (Tracer.SpanInScope scope = tracer.withSpan(span)) {
+                    span.tag("gen_ai.request.model", body.path("model").asText("unknown"));
+                    span.tag("gen_ai.request.stream", String.valueOf(body.path("stream").asBoolean(false)));
+                    return handle(body, key, request, response);
+                } finally {
+                    span.end();
+                }
             } finally {
                 concurrency.release(key.getId());
             }
@@ -172,6 +186,7 @@ public class ChatCompletionsController {
         return value;
     }
 
+    @Operation(summary = "List the model catalogue")
     @GetMapping("/models")
     public Map<String, Object> models() {
         return catalog.list();
@@ -184,6 +199,7 @@ public class ChatCompletionsController {
                 ApiException.notFound("The model '" + id + "' does not exist.", "model_not_found"));
     }
 
+    @Operation(summary = "Token, cost and cache usage for the calling key")
     @GetMapping("/usage")
     public Map<String, Object> usage(
             @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key,

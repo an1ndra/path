@@ -4,6 +4,7 @@ import com.anindra.path.domain.ClientKey;
 import com.anindra.path.domain.ModelRoute;
 import com.anindra.path.domain.UsageRecord;
 import com.anindra.path.repo.UsageRecordRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class UsageService {
 
     private final UsageRecordRepository usage;
     private final ApiKeyService apiKeys;
+    private final MeterRegistry metrics;
 
     /** Itemised cost of one call. */
     public record CostBreakdown(BigDecimal inputUsd, BigDecimal cachedInputUsd, BigDecimal cacheWriteUsd,
@@ -121,6 +123,7 @@ public class UsageService {
         record.setFallbackFrom(meta.fallbackFrom());
         record.setStatus(UsageRecord.Status.SUCCESS);
         usage.save(record);
+        recordMetrics(record);
 
         apiKeys.charge(key.getId(), cost.totalUsd());
         return cost.totalUsd();
@@ -147,6 +150,9 @@ public class UsageService {
         record.setFinishReason("cache");
         record.setStatus(UsageRecord.Status.SUCCESS);
         usage.save(record);
+        metrics.counter("path.cache.hits",
+                "model", String.valueOf(record.getPublicModelId())).increment();
+        recordMetrics(record);
     }
 
     @Transactional
@@ -167,6 +173,27 @@ public class UsageService {
         record.setErrorCode(code);
         record.setErrorMessage(message != null && message.length() > 500 ? message.substring(0, 500) : message);
         usage.save(record);
+        recordMetrics(record);
+    }
+
+    /** Feeds the Prometheus endpoint. Tag values stay low-cardinality (model, provider, status). */
+    private void recordMetrics(UsageRecord record) {
+        String model = String.valueOf(record.getPublicModelId());
+        String provider = String.valueOf(record.getProviderSlug());
+        metrics.counter("path.requests",
+                "model", model,
+                "provider", provider,
+                "status", record.getStatus().name().toLowerCase(),
+                "streamed", String.valueOf(record.isStreamed())).increment();
+        metrics.timer("path.latency", "provider", provider)
+                .record(java.time.Duration.ofMillis(record.getLatencyMs()));
+        metrics.counter("path.tokens", "type", "prompt").increment(record.getPromptTokens());
+        metrics.counter("path.tokens", "type", "completion").increment(record.getCompletionTokens());
+        metrics.counter("path.tokens", "type", "cached").increment(record.getCachedInputTokens());
+        if (record.getCostUsd() != null) {
+            metrics.counter("path.cost.usd",
+                    "model", model, "provider", provider).increment(record.getCostUsd().doubleValue());
+        }
     }
 
     private static BigDecimal throughput(TokenUsage usage, CallMeta meta) {

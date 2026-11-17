@@ -1,0 +1,24 @@
+# Time-boxed, reviewable exceptions for the container gate.
+#
+# Everything here is a CRITICAL that the gate would otherwise block on, with a date after
+# which the ignore stops working and the release fails again — so this cannot rot quietly.
+#
+# Re-check when Spring Boot 4 lands: both are fixed only in Spring Framework 7.0.9, and
+# Boot 3.5.x (the latest 3.5 line) still ships 6.2.19.
+vulnerabilities:
+  - id: CVE-2026-47884
+    statement: >-
+      RCE via XsltView path limitation in spring-webmvc. Fixed only in Spring Framework
+      7.0.9 (Spring Boot 4). Path is a REST-only application: every controller returns
+      JSON or SSE via @RestController, there is no view resolver, no View implementation
+      and no JSP or XSLT rendering on the classpath, so the affected code path is not
+      reachable. Revisit with the Spring Boot 4 migration.
+    expired_at: 2027-02-01
+
+  - id: CVE-2026-47890
+    statement: >-
+      SSE stream corruption when view rendering is involved, fixed only in Spring
+      Framework 7.0.9 (Spring Boot 4). Path does stream SSE, but it writes the response
+      body directly from StreamService rather than through a view, and the advisory's
+      affected path is view rendering. Revisit with the Spring Boot 4 migration.
+    expired_at: 2027-02-01

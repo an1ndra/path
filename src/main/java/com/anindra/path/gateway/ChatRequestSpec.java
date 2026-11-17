@@ -3,9 +3,6 @@ package com.anindra.path.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.anindra.path.api.ApiException;
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,8 +13,6 @@ import java.util.Set;
  * The original body is kept so OpenAI-shaped providers can be forwarded verbatim.
  */
 public final class ChatRequestSpec {
-
-    private static final EncodingRegistry TOKENIZERS = Encodings.newLazyEncodingRegistry();
 
     private static final Set<String> ROLES =
             Set.of("system", "developer", "user", "assistant", "tool", "function");
@@ -205,45 +200,52 @@ public final class ChatRequestSpec {
      * has a known encoding, otherwise falls back to the chars/4 heuristic.
      */
     public int estimatePromptTokens(String model) {
-        String text = promptText();
-        if (model != null && !model.isBlank()) {
-            try {
-                Encoding encoding = TOKENIZERS.getEncodingForModel(model).orElse(null);
-                if (encoding != null) {
-                    return Math.max(1, encoding.countTokens(text));
-                }
-            } catch (Exception ignored) {
-                // unknown model or unsupported encoding: fall through to the heuristic
-            }
-        }
-        return Math.max(1, text.length() / 4);
+        return TokenCounter.count(body, model).tokens();
     }
 
     public int estimatePromptTokens() {
         return estimatePromptTokens(null);
     }
 
-    private String promptText() {
-        StringBuilder sb = new StringBuilder();
-        for (JsonNode message : messages()) {
-            JsonNode role = message.get("role");
-            if (role != null) {
-                sb.append(role.asText()).append(' ');
-            }
-            JsonNode content = message.get("content");
-            if (content != null) {
-                sb.append(textOf(content));
-            }
-            JsonNode toolCalls = message.get("tool_calls");
-            if (toolCalls != null) {
-                sb.append(toolCalls.toString());
-            }
-            sb.append('\n');
+    /**
+     * Builds a spec for token counting, where a system-only prompt is legitimate and the
+     * chat-completion rules (at least one conversational turn) do not apply.
+     */
+    public static ChatRequestSpec forCounting(ObjectNode body) {
+        List<String> models = new ArrayList<>();
+        JsonNode modelsNode = body.get("models");
+        if (modelsNode != null && modelsNode.isArray()) {
+            modelsNode.forEach(n -> {
+                if (n.isTextual() && !n.asText().isBlank()) {
+                    models.add(n.asText());
+                }
+            });
         }
-        JsonNode tools = body.get("tools");
-        if (tools != null) {
-            sb.append(tools.toString());
+        String model = body.path("model").isTextual() ? body.get("model").asText() : null;
+        if (model == null || model.isBlank()) {
+            model = models.isEmpty() ? null : models.get(0);
         }
-        return sb.toString();
+        if (model == null || model.isBlank()) {
+            throw ApiException.badRequest("'model' is required.", "model");
+        }
+
+        List<String> providerOrder = new ArrayList<>();
+        boolean allowFallbacks = true;
+        JsonNode provider = body.get("provider");
+        if (provider != null && provider.isObject()) {
+            JsonNode order = provider.get("order");
+            if (order != null && order.isArray()) {
+                order.forEach(n -> {
+                    if (n.isTextual()) {
+                        providerOrder.add(n.asText());
+                    }
+                });
+            }
+            if (provider.has("allow_fallbacks")) {
+                allowFallbacks = provider.get("allow_fallbacks").asBoolean(true);
+            }
+        }
+        return new ChatRequestSpec(body, model, models, false, false, null, providerOrder,
+                allowFallbacks);
     }
 }

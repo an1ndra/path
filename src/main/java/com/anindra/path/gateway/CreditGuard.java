@@ -52,14 +52,18 @@ public class CreditGuard {
 
         if (key.getProjectId() != null) {
             projects.findById(key.getProjectId()).ifPresent(project -> {
-                enforceWindow("Project daily", project.getDailyLimitUsd(),
+                enforceProjectWindow(project, "daily", project.getDailyLimitUsd(),
                         usage.spendForProject(project.getId(), dayStart), dayStart, now);
-                enforceWindow("Project monthly", project.getMonthlyLimitUsd(),
+                enforceProjectWindow(project, "monthly", project.getMonthlyLimitUsd(),
                         usage.spendForProject(project.getId(), monthStart), monthStart, now);
                 if (project.getCreditLimitUsd() != null && project.getCreditLimitUsd().signum() > 0) {
                     BigDecimal projectSpend = usage.spendForProject(project.getId(),
                             Instant.EPOCH);
+                    warnProject(project, "lifetime", project.getCreditLimitUsd(), projectSpend,
+                            "lifetime");
                     if (projectSpend.compareTo(project.getCreditLimitUsd()) >= 0) {
+                        exhaustedProject(project, "lifetime", project.getCreditLimitUsd(),
+                                projectSpend, "lifetime");
                         throw ApiException.insufficientCredits(
                                 "Project '" + project.getSlug() + "' has exhausted its credit limit of "
                                         + project.getCreditLimitUsd().toPlainString() + " USD.");
@@ -114,6 +118,56 @@ public class CreditGuard {
     }
 
     /** Comma-separated ids or globs; blank means every model. */
+    private void enforceProjectWindow(com.anindra.path.domain.Project project, String window,
+                                      BigDecimal limit, BigDecimal spent, Instant periodStart,
+                                      Instant now) {
+        if (limit == null || limit.signum() <= 0) {
+            return;
+        }
+        warnProject(project, window, limit, spent, periodKey(window, periodStart));
+        if (spent.compareTo(limit) >= 0) {
+            exhaustedProject(project, window, limit, spent, periodKey(window, periodStart));
+            throw ApiException.insufficientCredits(
+                    "Project '" + project.getSlug() + "' " + window + " budget of "
+                            + limit.toPlainString() + " USD is exhausted (" + spent.toPlainString()
+                            + " USD spent). Raise the limit or wait for the window to reset.");
+        }
+    }
+
+    private void warnProject(com.anindra.path.domain.Project project, String window,
+                             BigDecimal limit, BigDecimal spent, String period) {
+        double remainingFraction = limit.subtract(spent)
+                .divide(limit, 4, java.math.RoundingMode.HALF_UP).doubleValue();
+        if (remainingFraction >= props.getAlerts().getBudgetThreshold()) {
+            return;
+        }
+        alerts.notifyOnce("project.budget_low:" + project.getId() + ":" + period,
+                "project.budget_low", projectPayload(project, window, limit, spent));
+    }
+
+    private void exhaustedProject(com.anindra.path.domain.Project project, String window,
+                                  BigDecimal limit, BigDecimal spent, String period) {
+        alerts.notifyOnce("project.budget_exhausted:" + project.getId() + ":" + period,
+                "project.budget_exhausted", projectPayload(project, window, limit, spent));
+    }
+
+    private static Map<String, Object> projectPayload(com.anindra.path.domain.Project project,
+                                                      String window, BigDecimal limit,
+                                                      BigDecimal spent) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("project_id", project.getId());
+        payload.put("project", project.getSlug());
+        payload.put("window", window);
+        payload.put("limit_usd", limit);
+        payload.put("spent_usd", spent);
+        payload.put("remaining_usd", limit.subtract(spent).max(BigDecimal.ZERO));
+        return payload;
+    }
+
+    private static String periodKey(String window, Instant periodStart) {
+        return window + "@" + periodStart;
+    }
+
     static boolean allows(ClientKey key, String model) {
         String allowed = key.getAllowedModels();
         if (allowed == null || allowed.isBlank()) {

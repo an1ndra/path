@@ -43,6 +43,7 @@ public class ChatCompletionsController {
     private final ChatService chatService;
     private final StreamService streamService;
     private final com.anindra.path.gateway.EmbeddingsService embeddings;
+    private final com.anindra.path.gateway.TokenCountService tokenCount;
     private final ModelCatalogService catalog;
     private final UsageService usageService;
     private final ApiKeyService apiKeys;
@@ -209,6 +210,60 @@ public class ChatCompletionsController {
     @PostMapping("/embeddings")
     public ResponseEntity<?> embeddings(
             @RequestBody ObjectNode body,
+            @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key,
+            HttpServletRequest request) {
+        if (key == null) {
+            throw ApiException.unauthorized(
+                    "Missing API key. Send it as 'Authorization: Bearer sk-gw-...'.", "missing_api_key");
+        }
+
+        String idempotencyKey = normalizeIdempotencyKey(request.getHeader(IDEMPOTENCY_HEADER));
+        String requestHash = idempotencyKey == null ? null : ApiKeyService.hash(body.toString());
+        if (idempotencyKey != null) {
+            var replay = idempotency.begin(key.getId(), idempotencyKey, requestHash);
+            if (replay.isPresent()) {
+                IdempotencyService.Replay stored = replay.get();
+                return ResponseEntity.status(stored.httpStatus())
+                        .contentType(MediaType.parseMediaType(stored.contentType()))
+                        .header("X-Idempotent-Replay", "true")
+                        .body(stored.body());
+            }
+        }
+
+        drain.begin();
+        try {
+            int limit = key.getMaxConcurrentRequests() != null
+                    ? key.getMaxConcurrentRequests() : props.getDefaultMaxConcurrentRequests();
+            if (!concurrency.tryAcquire(key.getId(), limit)) {
+                throw ApiException.tooManyConcurrent(limit);
+            }
+            try {
+                var result = embeddings.embed(body, key);
+                if (idempotencyKey != null) {
+                    idempotency.complete(key.getId(), idempotencyKey, 200,
+                            MediaType.APPLICATION_JSON_VALUE, result.body().toString());
+                }
+                return ResponseEntity.ok()
+                        .header("X-Gateway-Provider", result.providerSlug())
+                        .header("X-Gateway-Upstream-Model", result.upstreamModel())
+                        .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
+                        .body(result.body());
+            } catch (RuntimeException e) {
+                abandon(idempotencyKey, key);
+                throw e;
+            } finally {
+                concurrency.release(key.getId());
+            }
+        } finally {
+            drain.end();
+        }
+    }
+
+    @Operation(summary = "Count prompt tokens for a model",
+            description = "Free, authenticated; respects the model allowlist and rate limits")
+    @PostMapping("/tokens/count")
+    public Map<String, Object> tokenCount(
+            @RequestBody ObjectNode body,
             @RequestAttribute(name = AuthFilter.CLIENT_KEY_ATTR, required = false) ClientKey key) {
         if (key == null) {
             throw ApiException.unauthorized(
@@ -222,12 +277,7 @@ public class ChatCompletionsController {
                 throw ApiException.tooManyConcurrent(limit);
             }
             try {
-                var result = embeddings.embed(body, key);
-                return ResponseEntity.ok()
-                        .header("X-Gateway-Provider", result.providerSlug())
-                        .header("X-Gateway-Upstream-Model", result.upstreamModel())
-                        .header("X-Gateway-Cost-Usd", result.costUsd().toPlainString())
-                        .body(result.body());
+                return tokenCount.count(body, key);
             } finally {
                 concurrency.release(key.getId());
             }

@@ -395,6 +395,45 @@ def main():
     check("embeddings reject Anthropic routes", status == 501
           and ebody["error"]["code"] == "unsupported_endpoint", str(status))
 
+    # ------------------------------------------------- embeddings idempotency
+    idem = {"Idempotency-Key": "embed-" + str(int(time.time() * 1000))}
+    status, first_headers, first_body = jreq("POST", "/v1/embeddings", {
+        "model": "embed-test", "input": "idempotent"}, key=key, headers=idem)
+    status2, second_headers, second_body = jreq("POST", "/v1/embeddings", {
+        "model": "embed-test", "input": "idempotent"}, key=key, headers=idem)
+    check("embeddings replay a repeated Idempotency-Key",
+          status == 200 and status2 == 200
+          and second_headers.get("X-Idempotent-Replay") == "true"
+          and second_body == first_body,
+          str(status) + str(status2) + str(second_headers.get("X-Idempotent-Replay")))
+
+    status, _, conflict = jreq("POST", "/v1/embeddings", {
+        "model": "embed-test", "input": "different body"}, key=key, headers=idem)
+    check("embeddings reject a different body on the same key",
+          status == 409 and conflict["error"]["code"] == "idempotency_conflict", str(status))
+
+    # ------------------------------------------------------------ token count
+    status, _, counted = jreq("POST", "/v1/tokens/count", {
+        "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "count me"}]}, key=key)
+    check("tokens/count reports prompt tokens",
+          status == 200 and counted.get("prompt_tokens", 0) > 0
+          and counted.get("object") == "token_count", str(status) + str(counted)[:120])
+
+    tools_payload = {"model": "gpt-4o-mini",
+                     "messages": [{"role": "user", "content": "count me"}],
+                     "tools": [{"type": "function", "function": {
+                         "name": "lookup", "description": "look something up",
+                         "parameters": {"type": "object", "properties": {}}}}]}
+    _, _, with_tools = jreq("POST", "/v1/tokens/count", tools_payload, key=key)
+    check("tokens/count counts tool definitions",
+          with_tools.get("prompt_tokens", 0) > counted.get("prompt_tokens", 0),
+          str(with_tools.get("prompt_tokens")))
+
+    status, _, unknown = jreq("POST", "/v1/tokens/count", {
+        "model": "nope-not-real", "messages": [{"role": "user", "content": "hi"}]}, key=key)
+    check("tokens/count rejects an unknown model",
+          status == 404 and unknown["error"]["code"] == "model_not_found", str(status))
+
     # ------------------------------------------------------------ prompt logs
     status, _, plogs = jreq("GET", "/admin/prompt-logs?limit=5", admin=True)
     check("prompt log endpoint responds (disabled by default)",
@@ -455,7 +494,7 @@ def main():
                              {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
                              key=scoped_key.get("key"))
         check("project daily budget blocks its keys",
-              p1 == 200 and p2 == 402 and "Project daily" in p2body.get("error", {}).get("message", ""),
+              p1 == 200 and p2 == 402 and "daily budget" in p2body.get("error", {}).get("message", ""),
               f"{p1}/{p2} {str(p2body)[:100]}")
 
     # ----------------------------------------------------- project reporting

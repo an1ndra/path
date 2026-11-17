@@ -28,6 +28,29 @@ public class AlertService {
     private final ObjectMapper mapper;
     private final HttpClient http = HttpClient.newHttpClient();
     private final Map<String, Long> lastSent = new ConcurrentHashMap<>();
+    private final Map<String, Long> sentOnce = new ConcurrentHashMap<>();
+
+    /**
+     * Fires at most once per {@code dedupeKey}, regardless of the cooldown. Used for budget
+     * thresholds, where the key carries the period (project, window, day or month) so a
+     * busy project cannot emit thousands of identical events.
+     */
+    public void notifyOnce(String dedupeKey, String event, Map<String, Object> payload) {
+        String url = props.getAlerts().getWebhookUrl();
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        if (sentOnce.putIfAbsent(dedupeKey, System.currentTimeMillis()) != null) {
+            return;
+        }
+        notify(event, payload);
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 3_600_000)
+    void forgetOldDedupeKeys() {
+        long cutoff = System.currentTimeMillis() - java.time.Duration.ofDays(2).toMillis();
+        sentOnce.entrySet().removeIf(e -> e.getValue() < cutoff);
+    }
 
     public void notify(String event, Map<String, Object> payload) {
         String url = props.getAlerts().getWebhookUrl();

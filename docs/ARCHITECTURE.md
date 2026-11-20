@@ -25,6 +25,8 @@ Two wire formats cover every provider worth proxying:
 |---|---|---|
 | `OPENAI` | chat-completions | OpenAI, Groq, Google Gemini (compatible endpoint), Together, Fireworks, DeepSeek, vLLM, LM Studio, Ollama's `/v1`, any compatible endpoint |
 | `ANTHROPIC` | Messages API | Anthropic (native, with prompt caching and tool calls) |
+| `GEMINI` | generateContent | Google AI Studio (native: thinking budget, safety settings, cached content) |
+| `VERTEX` | generateContent | Vertex AI (same wire format, service-account OAuth2, project/location in the path) |
 
 Any other provider is a configuration change, not a code change: register it with
 `POST /admin/providers`, give it a base URL and a wire type, then add routes. A new wire

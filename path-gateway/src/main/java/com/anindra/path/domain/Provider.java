@@ -44,8 +44,16 @@ public class Provider {
     private String apiVersion;
 
     /** AES-GCM encrypted upstream credential. Null falls back to the environment. */
-    @Column(length = 2048)
+    @Column(length = 4096)
     private String apiKeyCipher;
+
+    /** Vertex only: the GCP project that owns the model. */
+    @Column(length = 128)
+    private String project;
+
+    /** Vertex only: the region, e.g. us-central1. */
+    @Column(length = 64)
+    private String location;
 
     @Column(nullable = false)
     private boolean enabled = true;

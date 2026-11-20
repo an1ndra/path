@@ -42,10 +42,20 @@ public class ProviderProbeService {
             return out;
         }
 
+        if (provider.getType() == ProviderType.VERTEX) {
+            // Vertex has no model-listing endpoint and its credential is a service account,
+            // not a bearer token; a probe here would only test the wrong thing.
+            out.put("ok", false);
+            out.put("note", "Vertex has no /models endpoint; probe a route instead.");
+            return out;
+        }
+
         Map<String, String> headers = new LinkedHashMap<>();
         if (provider.getType() == ProviderType.ANTHROPIC) {
             headers.put("x-api-key", apiKey);
             headers.put("anthropic-version", "2023-06-01");
+        } else if (provider.getType() == ProviderType.GEMINI) {
+            headers.put("x-goog-api-key", apiKey);
         } else {
             headers.putAll(com.anindra.path.gateway.ProviderUrls.headers(provider, apiKey, false));
         }
@@ -59,7 +69,9 @@ public class ProviderProbeService {
             out.put("status", response.status());
             out.put("latency_ms", latency);
             if (response.ok()) {
-                JsonNode data = mapper.readTree(response.body()).path("data");
+                JsonNode body = mapper.readTree(response.body());
+                // Gemini calls the list "models"; the OpenAI shape calls it "data".
+                JsonNode data = body.path("data").isArray() ? body.path("data") : body.path("models");
                 out.put("model_count", data.isArray() ? data.size() : 0);
             } else {
                 out.put("error", abbreviate(response.body()));

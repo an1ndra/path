@@ -156,11 +156,18 @@ public class ModelSyncService {
     }
 
     private List<String> fetchModelIds(Provider provider, String apiKey) throws Exception {
+        if (provider.getType() == ProviderType.VERTEX) {
+            // No model-listing endpoint, and the credential is a service account, not a key.
+            throw new ApiException(400, "invalid_request_error", "models_unsupported",
+                    "Vertex does not publish a model list; add routes by hand.");
+        }
         String url = provider.getBaseUrl() + "/models";
         Map<String, String> headers = new LinkedHashMap<>();
         if (provider.getType() == ProviderType.ANTHROPIC) {
             headers.put("x-api-key", apiKey);
             headers.put("anthropic-version", "2023-06-01");
+        } else if (provider.getType() == ProviderType.GEMINI) {
+            headers.put("x-goog-api-key", apiKey);
         } else {
             headers.put("Authorization", "Bearer " + apiKey);
         }
@@ -177,6 +184,16 @@ public class ModelSyncService {
             for (JsonNode node : data) {
                 if (node.hasNonNull("id")) {
                     ids.add(node.get("id").asText());
+                }
+            }
+        }
+        // Gemini lists {models:[{name:"models/gemini-2.5-pro", ...}]}; the id is the tail.
+        JsonNode gemini = root.path("models");
+        if (gemini.isArray()) {
+            for (JsonNode node : gemini) {
+                String name = node.path("name").asText("");
+                if (!name.isBlank()) {
+                    ids.add(name.startsWith("models/") ? name.substring("models/".length()) : name);
                 }
             }
         }

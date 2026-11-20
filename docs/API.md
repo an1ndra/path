@@ -392,6 +392,25 @@ covers successful calls only. Omitting `bucket` leaves the response exactly as b
 
 ---
 
+### Gemini extensions
+
+On a route whose provider type is `GEMINI` or `VERTEX`, the chat body accepts two
+Gemini-native fields in addition to the OpenAI shape:
+
+```json
+{"model": "gemini-2.5-pro",
+ "messages": [{"role": "user", "content": "..."}],
+ "thinkingConfig": {"thinkingBudget": 2048, "includeThoughts": true},
+ "safetySettings": [{"category": "HARM_CATEGORY_HATE_SPEECH",
+                     "threshold": "BLOCK_ONLY_HIGH"}]}
+```
+
+`reasoning_effort` (`minimal`, `low`, `medium`, `high`) is accepted as a shortcut for a
+thinking budget. Thinking tokens are returned in `usage.completion_tokens` (and broken out
+as `completion_tokens_details.reasoning_tokens`) because Gemini bills them as output. A
+blocked request returns 400 `content_blocked` with the safety category; a parameter the
+adapter cannot honour returns 422 `unsupported_parameter`.
+
 ## Metering fields
 
 Each usage row records:

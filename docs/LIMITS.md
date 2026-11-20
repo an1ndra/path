@@ -152,6 +152,22 @@
 - **Fuzzing is time-boxed.** `ChatRequestFuzzTest` runs Jazzer for 10s per build; deeper
   fuzzing is a manual `jazzer` run rather than a long CI job.
 
+**Gemini surfaces**
+
+| Surface | Thinking | Safety settings | Cached content | Tools | Images |
+|---|---|---|---|---|---|
+| `OPENAI` type, compatible endpoint | dropped | dropped | priced as plain input | yes | yes |
+| `GEMINI` type, AI Studio native | `thinkingConfig` or `reasoning_effort` | passed through | `cachedContentTokenCount` priced | yes | no (422) |
+| `VERTEX` type, native | same as AI Studio | same | same | yes | no (422) |
+
+A native Gemini route rejects an OpenAI parameter it cannot honour (`frequency_penalty`,
+`presence_penalty`, `seed`, `logit_bias`, `logprobs`, `n > 1`, a non-JSON
+`response_format`, `user`) with 422 `unsupported_parameter`, the same contract as
+Anthropic. A prompt or candidate blocked by safety returns 400 `content_blocked` naming the
+category. Thinking tokens are billed as output: `completion_tokens` includes
+`thoughtsTokenCount`, and `reasoning_tokens` keeps the breakdown. Streamed tool-call deltas
+are not reassembled; the native stream carries text.
+
 **Provider-inherent**
 
 - **Embeddings are OpenAI-compatible only.** Anthropic publishes no embeddings endpoint,

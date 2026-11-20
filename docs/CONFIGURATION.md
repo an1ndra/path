@@ -131,8 +131,31 @@ curl -s -X POST localhost:8080/admin/routes -H "$A" -H 'Content-Type: applicatio
 
 `POST /admin/models/sync` imports Gemini's list (image and embedding ids are filtered
 out) but leaves unknown prices at 0.00, so set them from Google's pricing page before
-sending traffic. The native `generateContent` protocol is not used; the compatible layer
-covers chat, streaming, tools, images and embeddings.
+sending traffic.
+
+### Gemini native (AI Studio and Vertex)
+
+The `OPENAI`-type row above uses Google's compatible endpoint. A `GEMINI` or `VERTEX`
+provider speaks native `generateContent` instead, which is what carries `thinkingConfig`,
+`safetySettings` and cached-content accounting:
+
+```bash
+# AI Studio: an API key, like any other provider
+curl -s -X POST localhost:8080/admin/providers -H "$A" -H 'Content-Type: application/json' \
+  -d '{"slug":"gemini-native","type":"GEMINI",
+       "base_url":"https://generativelanguage.googleapis.com/v1beta","api_key":"AIza..."}'
+
+# Vertex: a service-account JSON as the credential, plus project and location
+curl -s -X POST localhost:8080/admin/providers -H "$A" -H 'Content-Type: application/json' \
+  -d "{\"slug\":\"vertex\",\"type\":\"VERTEX\",\"project\":\"my-project\",
+       \"location\":\"us-central1\",\"api_key\":$(jq -Rs . < service-account.json)}"
+```
+
+`base_url` may be omitted for `VERTEX`: it defaults to
+`https://<location>-aiplatform.googleapis.com`. The service-account JSON is encrypted with
+the same master key as every other credential and is never returned by the admin API.
+Vertex has no model-listing endpoint, so `/admin/models/sync` skips it and its probe says
+so; add its routes by hand.
 
 ## Database
 

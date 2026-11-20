@@ -39,6 +39,8 @@ public class AdminService {
     public record ProviderInput(String slug, @JsonAlias("displayName") String displayName, String type,
                                 @JsonAlias("baseUrl") String baseUrl, @JsonAlias("apiKey") String apiKey,
                                 @JsonAlias("apiVersion") String apiVersion,
+                                @JsonAlias("project") String project,
+                                @JsonAlias("location") String location,
                                 @JsonAlias("requestTimeoutMs") Integer requestTimeoutMs,
                                 @JsonAlias("streamIdleTimeoutMs") Integer streamIdleTimeoutMs,
                                 Boolean enabled) {
@@ -110,7 +112,9 @@ public class AdminService {
         p.setDisplayName(in.displayName() == null || in.displayName().isBlank()
                 ? in.slug().trim() : in.displayName().trim());
         p.setType(parseType(in.type()));
-        p.setBaseUrl(requireBaseUrl(in.baseUrl()));
+        p.setProject(blankToNull(in.project()));
+        p.setLocation(blankToNull(in.location()));
+        p.setBaseUrl(vertexBaseUrl(p, in.baseUrl()));
         p.setApiVersion(in.apiVersion() == null || in.apiVersion().isBlank() ? null : in.apiVersion().trim());
         p.setEnabled(in.enabled() == null || in.enabled());
         p.setRequestTimeoutMs(in.requestTimeoutMs());
@@ -134,6 +138,12 @@ public class AdminService {
         }
         if (in.baseUrl() != null && !in.baseUrl().isBlank()) {
             p.setBaseUrl(requireBaseUrl(in.baseUrl()));
+        }
+        if (in.project() != null) {
+            p.setProject(blankToNull(in.project()));
+        }
+        if (in.location() != null) {
+            p.setLocation(blankToNull(in.location()));
         }
         if (in.apiVersion() != null) {
             // Blank clears it: the provider goes back to the plain OpenAI shape.
@@ -172,6 +182,8 @@ public class AdminService {
         view.put("type", p.getType().name());
         view.put("base_url", p.getBaseUrl());
         view.put("api_version", p.getApiVersion());
+        view.put("project", p.getProject());
+        view.put("location", p.getLocation());
         view.put("enabled", p.isEnabled());
         view.put("credential_source", credentials.source(p));
         view.put("credential_configured", credentials.apiKey(p) != null);
@@ -192,8 +204,31 @@ public class AdminService {
         try {
             return ProviderType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw ApiException.badRequest("type must be OPENAI or ANTHROPIC", "type");
+            throw ApiException.badRequest(
+                    "type must be OPENAI, ANTHROPIC, GEMINI or VERTEX", "type");
         }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /**
+     * Vertex needs a region-derived host. An explicit baseUrl wins (a proxy or a test), so
+     * only fill it in when the caller left it blank.
+     */
+    private static String vertexBaseUrl(Provider p, String requested) {
+        if (requested != null && !requested.isBlank()) {
+            return requireBaseUrl(requested);
+        }
+        if (p.getType() == ProviderType.VERTEX) {
+            if (p.getLocation() == null) {
+                throw ApiException.badRequest(
+                        "location is required for a VERTEX provider, e.g. us-central1", "location");
+            }
+            return "https://" + p.getLocation().toLowerCase() + "-aiplatform.googleapis.com";
+        }
+        throw ApiException.badRequest("base_url is required", "base_url");
     }
 
     private static String requireBaseUrl(String baseUrl) {

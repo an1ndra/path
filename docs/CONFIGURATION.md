@@ -52,6 +52,8 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_ALERT_ERROR_RATE` | `0.25` | provider EWMA error rate above which `provider.error_rate_high` fires; `0` disables the check |
+| `GATEWAY_ALERT_MIN_SAMPLES` | `20` | recent calls a provider needs before its error rate is trusted |
 | `GATEWAY_SEMANTIC_MODEL` | blank (off) | public model used to embed prompts for the semantic cache |
 | `GATEWAY_SEMANTIC_MAX_ENTRIES` | `200` | candidates compared per key and model |
 | `GATEWAY_ALERT_EMAIL_TO` (or the console) | blank (off) | comma-separated recipients for alert email |

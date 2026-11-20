@@ -80,6 +80,20 @@ public class GatewayProperties {
     private AdminAuth adminAuth = new AdminAuth();
     private ClientAuth clientAuth = new ClientAuth();
     private ProxyAuth proxyAuth = new ProxyAuth();
+    private Alert alert = new Alert();
+
+    /**
+     * Threshold alerts that are not tied to a single call (provider error rate).
+     * Env: GATEWAY_ALERT_ERROR_RATE, GATEWAY_ALERT_MIN_SAMPLES.
+     */
+    @Getter
+    @Setter
+    public static class Alert {
+        /** EWMA error rate above which a provider is reported. 0 disables the check. */
+        private double errorRate = 0.25;
+        /** Recent calls a provider needs before its rate is trusted (cold start is not an incident). */
+        private int minSamples = 20;
+    }
 
     @Getter
     @Setter

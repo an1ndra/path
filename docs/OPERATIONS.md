@@ -175,6 +175,16 @@ Webhook sends are retried (429/5xx/connect/timeout, three attempts, exponential 
 and bounded by a small queue; see "Observability" for the exact behaviour and the
 `path_alerts_sent_total` counter. Losing an alert is therefore visible, not silent.
 
+**Provider error rate.** The circuit breaker reacts to consecutive failures, so a provider
+failing 30% of calls with an occasional success is never parked and requests are quietly
+retried onto a fallback. A check runs every minute over the routing EWMA and fires
+`provider.error_rate_high` when the count-weighted rate per provider exceeds
+`GATEWAY_ALERT_ERROR_RATE` (default 0.25) with at least `GATEWAY_ALERT_MIN_SAMPLES`
+(default 20) recent calls. The payload carries `provider`, `error_rate`, `samples`,
+`threshold` and the EWMA `latency_ms`. One alert per provider per hour; when the rate falls
+below half the threshold, `provider.error_rate_normal` closes the incident. A provider with
+too few samples is ignored: a cold start is not an incident.
+
 ## Audit
 
 Every provider, route and key mutation is recorded with actor, action, target and

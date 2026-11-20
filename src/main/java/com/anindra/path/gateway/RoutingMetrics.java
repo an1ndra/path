@@ -80,6 +80,25 @@ public class RoutingMetrics {
         return sample == null ? 0 : sample.count;
     }
 
+    /** One (provider, model) row as the alert watcher sees it. */
+    public record Snapshot(String providerSlug, String publicModel, double errorRate,
+                           double latencyMs, long count) {
+    }
+
+    /** A copy of every current sample, for the scheduled error-rate check. */
+    public java.util.List<Snapshot> snapshot() {
+        java.util.List<Snapshot> out = new java.util.ArrayList<>();
+        samples.forEach((key, sample) -> {
+            int split = key.indexOf('|');
+            if (split < 0) {
+                return;
+            }
+            out.add(new Snapshot(key.substring(0, split), key.substring(split + 1),
+                    sample.errorRate, sample.latencyMs, sample.count));
+        });
+        return out;
+    }
+
     public void reset() {
         samples.clear();
     }

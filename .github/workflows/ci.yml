@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: surefire-reports
-          path: target/surefire-reports/
+          path: path-gateway/target/surefire-reports/
           retention-days: 7
 
   helm:
@@ -106,7 +106,7 @@ jobs:
           GATEWAY_PROMPT_LOGGING=true \
           GATEWAY_GUARDRAILS_MODERATION=true \
           GATEWAY_SEMANTIC_MODEL=embed-test \
-          java -jar target/path-*.jar \
+          java -jar path-gateway/target/path-*.jar \
             > /tmp/opencode/gateway.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8080/actuator/health > /dev/null; then

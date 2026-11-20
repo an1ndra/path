@@ -147,7 +147,7 @@ covers chat, streaming, tools, images and embeddings.
 export SPRING_PROFILES_ACTIVE=postgres
 export DB_URL=jdbc:postgresql://localhost:5432/aigateway
 export DB_USER=aigateway DB_PASSWORD=aigateway
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 or `docker compose up --build`.

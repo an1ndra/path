@@ -40,17 +40,17 @@ jobs:
 
       # --- supply chain: checksums -------------------------------------------
       - name: Collect SBOM
-        run: cp target/classes/META-INF/sbom/application.cdx.json target/bom.json
+        run: cp path-gateway/target/classes/META-INF/sbom/application.cdx.json path-gateway/target/bom.json
 
       - name: Write SHA-256 checksums
         run: |
-          cd target
+          cd path-gateway/target
           sha256sum path-*.jar bom.json | sort -k2 > checksums.txt
           ls -l path-*.jar bom.json checksums.txt
           cat checksums.txt
 
       - name: Verify the checksums we just wrote
-        run: cd target && sha256sum -c checksums.txt
+        run: cd path-gateway/target && sha256sum -c checksums.txt
 
       # --- container: build, scan, push --------------------------------------
       - name: Set up QEMU
@@ -157,7 +157,7 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: /tmp/release-notes.md
           files: |
-            target/path-*.jar
-            target/bom.json
-            target/checksums.txt
+            path-gateway/target/path-*.jar
+            path-gateway/target/bom.json
+            path-gateway/target/checksums.txt
           fail_on_unmatched_files: true

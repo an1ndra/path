@@ -63,7 +63,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export GROQ_API_KEY=gsk_...
 export GATEWAY_ADMIN_TOKEN=pick-something-long
 
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 First boot seeds four providers and a starter route table. To also mint a demo key
@@ -97,6 +97,7 @@ print(client.chat.completions.create(
 
 | Document | Contents |
 |---|---|
+| [Spring AI adapter](docs/SPRING-AI.md) | `path-spring-ai`: ChatModel and EmbeddingModel over the gateway |
 | [API reference](docs/API.md) | Every endpoint, request/response shapes, error codes, idempotency, cache, embeddings |
 | [Architecture](docs/ARCHITECTURE.md) | Request flow, providers, routing, what is metered |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable, timeouts, credentials, Postgres |

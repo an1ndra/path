@@ -23,10 +23,13 @@ RUN set -eux; \
     mvn -v
 
 COPY pom.xml ./
+COPY path-gateway/pom.xml path-gateway/pom.xml
+COPY path-spring-ai/pom.xml path-spring-ai/pom.xml
 RUN mvn -B -q -DskipTests dependency:go-offline
 
-COPY src/ src/
-RUN mvn -B -q -DskipTests package
+COPY path-gateway/src/ path-gateway/src/
+# The gateway does not depend on the adapter, so the image build skips the Spring AI module.
+RUN mvn -B -q -DskipTests -pl path-gateway package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
@@ -37,7 +40,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/target/path-*.jar app.jar
+COPY --from=build /app/path-gateway/target/path-*.jar app.jar
 
 # Run as an unprivileged user (Trivy DS-0002) and keep ./data writable for the H2 file
 # and the generated master key.

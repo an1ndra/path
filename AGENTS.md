@@ -19,17 +19,31 @@ dependency: the gateway translates to each provider's native protocol.
 # unit + integration tests (85)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (104 checks, no real keys)
+# full end-to-end suite against a mock upstream (no real keys)
 python3 tools/mock-upstream.py 9099 &
-GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
+GATEWAY_ADMIN_TOKEN=test-admin java -jar path-gateway/target/path-*.jar &
 python3 tools/smoke_test.py
 
 # run locally
 export OPENAI_API_KEY=... ANTHROPIC_API_KEY=... GATEWAY_ADMIN_TOKEN=...
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 The seeder prints a demo `sk-gw-...` key on the first boot only.
+
+## Modules
+
+`./mvnw` is a Maven reactor, not a single project:
+
+| Module | Artifact | Contents |
+|---|---|---|
+| `path-gateway/` | `io.github.an1ndra:path` | the gateway jar, the runnable Spring Boot application |
+| `path-spring-ai/` | `io.github.an1ndra:path-spring-ai` | a Spring AI `ChatModel`/`EmbeddingModel` over the gateway |
+
+The gateway is the published root artifact and never depends on Spring AI; the adapter is
+the only module that knows about it. `./mvnw verify` builds both. The Dockerfile builds only
+`-pl path-gateway`, so the image does not carry the adapter's dependencies. `tools/` and
+`deploy/` stay at the repository root.
 
 ## Layout
 

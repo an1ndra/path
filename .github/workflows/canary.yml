@@ -40,7 +40,7 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: |
           ./mvnw -B -DskipTests package
-          GATEWAY_ADMIN_TOKEN=canary java -jar target/path-*.jar > /tmp/gateway.log 2>&1 &
+          GATEWAY_ADMIN_TOKEN=canary java -jar path-gateway/target/path-*.jar > /tmp/gateway.log 2>&1 &
           for i in $(seq 1 60); do
             curl -sf http://127.0.0.1:8080/actuator/health > /dev/null && break
             sleep 1

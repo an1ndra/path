@@ -176,6 +176,12 @@ a smoke check. Never claim a fix without running both.
   `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow
   publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is
   missing or empty (`tools/changelog.py`).
+- **The image is scanned before it is published.** The workflow pushes only
+  `ghcr.io/<repo>:sha-<commit>`; Trivy gates that tag; only then does
+  `docker buildx imagetools create` copy the same digest to `<tag>` and `latest`. A failed
+  scan therefore leaves a `sha-` tag and an unused version number, not a released image.
+  The digest in the workflow summary is the one that was scanned. Do not move the version
+  tag back into the build step.
 
 ## Issue labels
 

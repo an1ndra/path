@@ -111,6 +111,20 @@ Add three repository secrets and one variable:
 The release workflow then publishes on each `v*` tag. With the variable unset the step is
 skipped, so a fork never tries to publish.
 
+## Container image order
+
+The image is gated before it is named. The workflow:
+
+1. builds and pushes **only** `ghcr.io/an1ndra/path:sha-<commit>`;
+2. runs Trivy against that tag;
+3. promotes the exact digest with
+   `docker buildx imagetools create -t ghcr.io/an1ndra/path:<tag> -t ghcr.io/an1ndra/path:latest ghcr.io/an1ndra/path:sha-<commit>`;
+4. writes the promoted digest to the workflow summary.
+
+A failing scan therefore burns no version number and leaves no version tag a deployment
+could pull; the `sha-` tag stays for traceability. See issue #80 for the two releases that
+were lost to the old order.
+
 ## Consumers
 
 ```xml

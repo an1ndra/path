@@ -243,7 +243,7 @@ public class StreamService {
                     continue;
                 }
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
-                        ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
+                        ChatService.elapsedMs(started), true, attempts, lastError.status(), lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
                 return false;
 
@@ -259,7 +259,7 @@ public class StreamService {
                     continue;
                 }
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
-                        ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
+                        ChatService.elapsedMs(started), true, attempts, lastError.status(), lastError.code(), lastError.getMessage());
                 emitError(out, lastError);
                 return false;
 
@@ -279,7 +279,7 @@ public class StreamService {
                         "Stream to " + provider.getSlug() + " broke: " + e.getMessage(),
                         "upstream_stream_error");
                 usage.recordError(key, spec, provider.getSlug(), rr.route().getUpstreamModelId(),
-                        ChatService.elapsedMs(started), true, attempts, lastError.code(), lastError.getMessage());
+                        ChatService.elapsedMs(started), true, attempts, lastError.status(), lastError.code(), lastError.getMessage());
                 try {
                     emitError(out, lastError);
                 } catch (IOException clientGone) {
@@ -304,7 +304,7 @@ public class StreamService {
             lastError = new ApiException(lastError.status(), lastError.type(), lastError.code(),
                     lastError.getMessage() + " (routes tried: " + String.join("; ", failures) + ")");
         }
-        usage.recordError(key, spec, null, null, ChatService.elapsedMs(started), true, attempts,
+        usage.recordError(key, spec, null, null, ChatService.elapsedMs(started), true, attempts, lastError.status(),
                 lastError.code(), lastError.getMessage());
         emitError(out, lastError);
         return false;

@@ -163,7 +163,7 @@ public class ChatService {
                     lastError = toApiException(failure);
                     long latency = elapsedMs(started);
                     usage.recordError(key, spec, rr.providerSlug(), rr.route().getUpstreamModelId(),
-                            latency, false, attempts, lastError.code(), lastError.getMessage());
+                            latency, false, attempts, lastError.status(), lastError.code(), lastError.getMessage());
                     throw lastError;
                 }
 
@@ -222,7 +222,7 @@ public class ChatService {
             lastError = new ApiException(lastError.status(), lastError.type(), lastError.code(),
                     lastError.getMessage() + " (routes tried: " + String.join("; ", failures) + ")");
         }
-        usage.recordError(key, spec, null, null, elapsedMs(started), false, attempts,
+        usage.recordError(key, spec, null, null, elapsedMs(started), false, attempts, lastError.status(),
                 lastError.code(), lastError.getMessage());
         throw lastError;
         } finally {

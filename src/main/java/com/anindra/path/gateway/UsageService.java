@@ -162,7 +162,7 @@ public class UsageService {
 
     @Transactional
     public void recordError(ClientKey key, ChatRequestSpec spec, String providerSlug, String upstreamModel,
-                            long latencyMs, boolean streamed, int attempts, String code, String message) {
+                            long latencyMs, boolean streamed, int attempts, int status, String code, String message) {
         UsageRecord record = new UsageRecord();
         if (key != null) {
             record.setClientKeyId(key.getId());
@@ -178,6 +178,12 @@ public class UsageService {
         record.setErrorCode(code);
         record.setErrorMessage(message != null && message.length() > 500 ? message.substring(0, 500) : message);
         usage.save(record);
+        // Kept separate from path_requests_total so an alert can tell a 4xx from a 5xx
+        // without a high-cardinality label on the request counter.
+        metrics.counter("path.errors",
+                "provider", String.valueOf(providerSlug),
+                "class", status >= 500 ? "5xx" : status >= 400 ? "4xx" : "other",
+                "code", code == null ? "unknown" : code).increment();
         recordMetrics(record);
     }
 

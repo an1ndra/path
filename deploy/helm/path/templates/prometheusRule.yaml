@@ -64,7 +64,7 @@ spec:
             runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
         - alert: PathErrorRateHigh
           expr: |
-            sum(rate(path_requests_total{status="error"}[5m]))
+            sum(rate(path_errors_total{class="5xx"}[5m]))
             /
             clamp_min(sum(rate(path_requests_total[5m])), 0.0001)
             > 0.02
@@ -72,7 +72,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "More than 2% of requests are failing"
+            summary: "More than 2% of requests are failing with a 5xx"
             description: >-
               Fallback is exhausted or unavailable; usage rows carry error_code and
               error_message for the failing calls.

@@ -122,7 +122,8 @@ digest is written to the workflow summary so it can be pinned.
 - **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,
   streamed), `path_latency_seconds`, `path_tokens_total` (prompt/completion/cached),
   `path_cost_usd_total`, `path_cache_hits_total`, `path_fallbacks_total`,
-  `path_provider_circuit_open` (provider_id; 1 while the breaker is open) and
+  `path_provider_circuit_open` (provider_id; 1 while the breaker is open),
+  `path_errors_total` (provider, class 4xx/5xx/other, gateway error code) and
   `path_alerts_sent_total` (outcome).
 - **Traces** via Micrometer + OpenTelemetry. Off by default (`GATEWAY_TRACE_SAMPLE=0`);
   set a sampling probability and `OTEL_EXPORTER_OTLP_ENDPOINT` to export.
@@ -198,7 +199,7 @@ them with `promtool check rules`.
 | `PathHighFallbackRate` | fallback requests are over 20% of traffic for 10m | one route is failing; check `path_requests_total{status="error"}` and the route's probe |
 | `PathCacheHitRatioLow` | the 30m cache hit ratio is under half its 7-day average for 30m | a prompt prefix changed, caching was disabled on a route, or a client uses `temperature > 0` |
 | `PathSpendRateHigh` | the last hour, extrapolated, is above 2× the whole previous day | check top models and keys at `/admin/stats` |
-| `PathErrorRateHigh` | more than 2% of requests fail for 10m | fallback is exhausted; read `error_code` in `/admin/usage` |
+| `PathErrorRateHigh` | more than 2% of requests fail with a 5xx for 10m | fallback is exhausted; read `error_code` in `/admin/usage` |
 | `PathProviderParked` | `path_provider_circuit_open` was 1 for the whole last 15m | a provider has been unreachable since then; every route on it is skipped |
 
 Every rule has a `for` duration so a single bad minute does not page. The cache rule uses

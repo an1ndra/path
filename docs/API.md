@@ -352,6 +352,7 @@ ids land at `0.00` and are flagged in `description`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/admin/stats?window=24h` | totals, percentiles, cache, providers/models |
+| GET | `/admin/stats?window=24h&bucket=1h` | the same, plus a bucketed time series |
 | GET | `/admin/usage?window=24h&limit=100&keyId=` | raw usage rows |
 
 ```json
@@ -368,6 +369,24 @@ ids land at `0.00` and are flagged in `description`.
   "by_model": [{"model": "gpt-4o-mini", "requests": 12, "tokens": 180, "cost_usd": 0.0002}]
 }
 ```
+
+`bucket` is optional and accepts `1m`, `5m`, `1h` or `1d`; anything else is a 400 that
+names the accepted values. When present the response also carries:
+
+```json
+{
+  "bucket": "1h",
+  "series": [
+    {"from": "2026-11-17T10:00:00Z", "requests": 412, "cost_usd": 0.71,
+     "failures": 3, "p95_latency_ms": 812}
+  ]
+}
+```
+
+Every bucket in the window is present, zeroes included, and the window is clamped to at
+most 500 points. The series is one query over `usage_records` for the whole window,
+bucketed in Java (`AdminReportingService`), not one query per point; `p95_latency_ms`
+covers successful calls only. Omitting `bucket` leaves the response exactly as before.
 
 ---
 

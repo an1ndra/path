@@ -64,6 +64,19 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
     @Query("select u.latencyMs from UsageRecord u where u.createdAt >= :from and u.status = com.anindra.path.domain.UsageRecord.Status.SUCCESS")
     List<Long> findLatenciesSince(Instant from);
 
+    /**
+     * Every row a time-series bucket needs, in one query. The caller groups by time in Java
+     * so the same JPQL works on H2 and Postgres without database-specific date arithmetic.
+     */
+    @Query("select u.createdAt, u.status, u.costUsd, u.latencyMs from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    List<Object[]> findSeriesSource(Instant from, Instant to);
+
+    @Query("select u.createdAt, u.status, u.costUsd, u.latencyMs from UsageRecord u "
+            + "where u.clientKeyId in :keyIds and u.createdAt >= :from and u.createdAt < :to")
+    List<Object[]> findSeriesSourceForKeys(java.util.Collection<Long> keyIds, Instant from, Instant to);
+
+
     @Query("select u.providerSlug, count(u), coalesce(sum(u.costUsd), 0) from UsageRecord u where u.createdAt >= :from group by u.providerSlug")
     List<Object[]> groupByProviderSince(Instant from);
 

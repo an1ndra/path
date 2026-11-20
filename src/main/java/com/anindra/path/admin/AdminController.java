@@ -300,8 +300,9 @@ public class AdminController {
 
     @GetMapping("/stats")
     public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window,
-                                     @RequestParam(required = false) Long projectId) {
-        Map<String, Object> out = reporting.stats(window, projectId);
+                                     @RequestParam(required = false) Long projectId,
+                                     @RequestParam(required = false) String bucket) {
+        Map<String, Object> out = reporting.stats(window, projectId, bucket);
         Object cache = out.get("cache");
         if (cache instanceof Map<?, ?> existing) {
             @SuppressWarnings("unchecked")

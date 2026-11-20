@@ -165,11 +165,115 @@ public class AdminReportingService {
     }
 
     public Map<String, Object> stats(String window, Long projectId) {
+        return stats(window, projectId, null);
+    }
+
+    /**
+     * Aggregate stats, plus an optional bucketed series when {@code bucket} is given.
+     * Buckets are filled with zeroes so a chart never has holes, and the window is clamped
+     * to at most {@link #MAX_POINTS} buckets.
+     */
+    public Map<String, Object> stats(String window, Long projectId, String bucket) {
         Duration parsed = Durations.cap(Durations.parse(window, Duration.ofHours(24)), Duration.ofDays(365));
-        if (projectId == null) {
-            return adminService.stats(parsed);
+        if (bucket != null && !bucket.isBlank() && !BUCKETS.containsKey(bucket)) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "bucket must be one of " + ACCEPTED_BUCKETS, "bucket");
         }
-        return projectStats(projectId, parsed);
+        Map<String, Object> out = projectId == null
+                ? adminService.stats(parsed)
+                : projectStats(projectId, parsed);
+        if (bucket != null && !bucket.isBlank()) {
+            out.put("bucket", bucket);
+            out.put("series", series(projectId, parsed, bucket));
+        }
+        return out;
+    }
+
+    /** Accepted bucket sizes; the value is the width in seconds. */
+    static final Map<String, Long> BUCKETS = Map.of(
+            "1m", 60L,
+            "5m", 300L,
+            "1h", 3_600L,
+            "1d", 86_400L);
+    private static final String ACCEPTED_BUCKETS = "1m, 5m, 1h, 1d";
+
+    /** A window never renders more than this many points. */
+    static final int MAX_POINTS = 500;
+
+    /**
+     * One query for the whole window, bucketed in Java. The alternative — one query per
+     * bucket — multiplies database round-trips by the number of points, and PostgreSQL-only
+     * date functions would break the H2 test suite.
+     */
+    private List<Map<String, Object>> series(Long projectId, Duration window, String bucket) {
+        Long width = BUCKETS.get(bucket);
+        if (width == null) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "bucket must be one of " + ACCEPTED_BUCKETS, "bucket");
+        }
+
+        long nowSeconds = Instant.now().getEpochSecond();
+        // Align to the bucket grid so the newest point is the bucket containing "now".
+        long end = (nowSeconds / width + 1) * width;
+        int points = (int) Math.min(MAX_POINTS, Math.max(1, ceilDiv(window.getSeconds(), width)));
+        long start = end - (long) points * width;
+
+        List<Object[]> rows;
+        if (projectId == null) {
+            rows = usage.findSeriesSource(Instant.ofEpochSecond(start), Instant.ofEpochSecond(end));
+        } else {
+            List<Long> keyIds = projectKeyIds(projectId);
+            rows = keyIds.isEmpty() ? List.of()
+                    : usage.findSeriesSourceForKeys(keyIds,
+                            Instant.ofEpochSecond(start), Instant.ofEpochSecond(end));
+        }
+
+        long[] requests = new long[points];
+        long[] failures = new long[points];
+        java.math.BigDecimal[] cost = new java.math.BigDecimal[points];
+        List<List<Long>> latencies = new ArrayList<>(points);
+        for (int i = 0; i < points; i++) {
+            cost[i] = java.math.BigDecimal.ZERO;
+            latencies.add(new ArrayList<>());
+        }
+
+        for (Object[] row : rows) {
+            Instant createdAt = (Instant) row[0];
+            UsageRecord.Status status = (UsageRecord.Status) row[1];
+            java.math.BigDecimal rowCost = (java.math.BigDecimal) row[2];
+            Long latency = (Long) row[3];
+            int index = (int) ((createdAt.getEpochSecond() - start) / width);
+            if (index < 0 || index >= points) {
+                continue;
+            }
+            requests[index]++;
+            if (status == UsageRecord.Status.ERROR) {
+                failures[index]++;
+            } else if (latency != null) {
+                latencies.get(index).add(latency);
+            }
+            if (rowCost != null) {
+                cost[index] = cost[index].add(rowCost);
+            }
+        }
+
+        List<Map<String, Object>> out = new ArrayList<>(points);
+        for (int i = 0; i < points; i++) {
+            List<Long> bucketLatencies = latencies.get(i);
+            bucketLatencies.sort(null);
+            Map<String, Object> point = new LinkedHashMap<>();
+            point.put("from", Instant.ofEpochSecond(start + (long) i * width).toString());
+            point.put("requests", requests[i]);
+            point.put("cost_usd", cost[i]);
+            point.put("failures", failures[i]);
+            point.put("p95_latency_ms", percentile(bucketLatencies, 0.95));
+            out.add(point);
+        }
+        return out;
+    }
+
+    private static long ceilDiv(long value, long divisor) {
+        return (value + divisor - 1) / divisor;
     }
 
     /** Aggregates in Java from the project's rows; bounded so a huge project cannot OOM. */

@@ -339,7 +339,7 @@ def main():
     status, docs_headers, docs = jreq("GET", "/v3/api-docs")
     check("OpenAPI spec is served", status == 200 and "/v1/chat/completions" in json.dumps(docs), str(status))
 
-    status, _, prom = jreq("GET", "/actuator/prometheus")
+    status, _, prom = jreq("GET", "/actuator/prometheus", admin=True)
     check("Prometheus metrics are exposed",
           status == 200 and "path_requests_total" in prom.get("_raw", ""), str(status))
 
@@ -361,7 +361,7 @@ def main():
         "model": "smoke-alias", "messages": [{"role": "user", "content": "hi"}]}, key=key)
     check("the alias serves traffic", status == 200 and body.get("choices"), str(status))
 
-    _, _, catalogue = jreq("GET", "/v1/models")
+    _, _, catalogue = jreq("GET", "/v1/models", key=key)
     ids = [m["id"] for m in catalogue["data"]]
     check("the alias appears in the catalogue", "smoke-alias" in ids, str(ids)[:120])
 
@@ -815,7 +815,7 @@ def main():
 
     status, _, body = jreq("POST", "/v1/chat/completions", {
         "model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]})
-    check("missing key -> 401", status == 401 and body["error"]["code"] == "missing_api_key", str(status))
+    check("missing key -> 401", status == 401 and body["error"]["code"] == "invalid_api_key", str(status))
 
     # ------------------------------------------------------------------ credits
     status, _, poor = jreq("POST", "/admin/keys", {

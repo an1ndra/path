@@ -1,0 +1,414 @@
+package com.anindra.path.admin;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+/** Admin API, guarded by the X-Admin-Token filter. */
+@RestController
+@RequestMapping("/admin")
+@RequiredArgsConstructor
+@io.swagger.v3.oas.annotations.tags.Tag(name = "Admin", description = "Configuration, keys, operations and reporting")
+public class AdminController {
+
+    private final AdminService admin;
+    private final AdminReportingService reporting;
+    private final ModelSyncService modelSync;
+    private final ProviderProbeService probes;
+    private final AuditService audit;
+    private final PromptLogService promptLogs;
+    private final TenancyService tenancy;
+    private final AliasService aliasService;
+    private final AlertService alerts;
+    private final MailSettingsService mailSettingsService;
+    private final DailyDigestService digest;
+    private final com.anindra.path.config.GatewayProperties props;
+
+    // ------------------------------------------------------------- providers
+
+    @GetMapping("/providers")
+    public List<Map<String, Object>> providers() {
+        return admin.listProviders();
+    }
+
+    @PostMapping("/providers")
+    public Map<String, Object> createProvider(@RequestBody AdminService.ProviderInput input) {
+        var result = admin.createProvider(input);
+        audit.record("provider.create", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @PatchMapping("/providers/{id}")
+    public Map<String, Object> updateProvider(@PathVariable Long id,
+                                              @RequestBody AdminService.ProviderInput input) {
+        var result = admin.updateProvider(id, input);
+        audit.record("provider.update", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @DeleteMapping("/providers/{id}")
+    public Map<String, Object> deleteProvider(@PathVariable Long id) {
+        admin.deleteProvider(id);
+        audit.record("provider.delete", "provider:" + id, null);
+        return Map.of("deleted", true, "id", id);
+    }
+
+    // ---------------------------------------------------------------- routes
+
+    @GetMapping("/routes")
+    public List<Map<String, Object>> routes(@RequestParam(required = false) String model) {
+        return admin.listRoutes(model);
+    }
+
+    @PostMapping("/routes")
+    public Map<String, Object> createRoute(@RequestBody AdminService.RouteInput input) {
+        var result = admin.createRoute(input);
+        audit.record("route.create", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @PatchMapping("/routes/{id}")
+    public Map<String, Object> updateRoute(@PathVariable Long id,
+                                           @RequestBody AdminService.RouteInput input) {
+        var result = admin.updateRoute(id, input);
+        audit.record("route.update", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @DeleteMapping("/routes/{id}")
+    public Map<String, Object> deleteRoute(@PathVariable Long id) {
+        admin.deleteRoute(id);
+        audit.record("route.delete", "route:" + id, null);
+        return Map.of("deleted", true, "id", id);
+    }
+
+    // ------------------------------------------------------------------ keys
+
+    @GetMapping("/keys")
+    public List<Map<String, Object>> keys(@RequestParam(required = false) Long projectId) {
+        return admin.listKeys(projectId);
+    }
+
+    @PostMapping("/keys")
+    public Map<String, Object> createKey(@RequestBody AdminService.KeyInput input) {
+        var result = admin.createKey(input);
+        audit.record("key.create", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @PatchMapping("/keys/{id}")
+    public Map<String, Object> updateKey(@PathVariable Long id,
+                                         @RequestBody AdminService.KeyInput input) {
+        var result = admin.updateKey(id, input);
+        audit.record("key.update", String.valueOf(result.get("id")), input);
+        return result;
+    }
+
+    @PostMapping("/keys/{id}/revoke")
+    public Map<String, Object> revokeKey(@PathVariable Long id) {
+        var result = admin.revokeKey(id);
+        audit.record("key.revoke", String.valueOf(result.get("id")), null);
+        return result;
+    }
+
+    @PostMapping("/keys/{id}/topup")
+    public Map<String, Object> topUp(@PathVariable Long id, @RequestBody Map<String, BigDecimal> body) {
+        return admin.topUpKey(id, body.get("amount_usd"));
+    }
+
+    @PostMapping("/rotate-master-key")
+    public Map<String, Object> rotateMasterKey(@RequestBody Map<String, String> body) {
+        var result = admin.rotateMasterKey(body.get("new_key"));
+        audit.record("master-key.rotate", "master-key", null);
+        return result;
+    }
+
+    public record MailSettingsInput(String host, Integer port, String username, String password,
+                                    String from, String to, Boolean enabled) {
+    }
+
+    @GetMapping("/mail-settings")
+    public Map<String, Object> mailSettings() {
+        return mailSettingsService.view();
+    }
+
+    @PutMapping("/mail-settings")
+    public Map<String, Object> updateMailSettings(@RequestBody MailSettingsInput input) {
+        var updated = mailSettingsService.save(input.host(), input.port(), input.username(),
+                input.password(), input.from(), input.to(), input.enabled());
+        // The password is write-only, so the audit payload carries the other fields only.
+        audit.record("mail-settings.update", "mail-settings", java.util.Map.of(
+                "host", String.valueOf(updated.get("host")),
+                "to", String.valueOf(updated.get("to")),
+                "enabled", String.valueOf(updated.get("configured"))));
+        return updated;
+    }
+
+    @PostMapping("/alerts/test")
+    public Map<String, Object> testAlert() {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("message", "This is a test alert from Path; if you can read it, alerting works.");
+        payload.put("severity", "info");
+        alerts.notify("alert.test", payload);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("sent", true);
+        out.put("email", alerts.emailEnabled());
+        out.put("webhook", alerts.webhookEnabled());
+        if (!alerts.emailEnabled() && !alerts.webhookEnabled()) {
+            out.put("note", "Neither channel is configured: set GATEWAY_ALERT_EMAIL_TO (+ spring.mail.*) "
+                    + "or GATEWAY_ALERT_WEBHOOK.");
+        }
+        audit.record("alert.test", "alert", null);
+        return out;
+    }
+
+    /**
+     * Sends yesterday's digest now, and returns the rendered text either way, so an
+     * operator can check the mailbox and the numbers before trusting the 08:00 job.
+     */
+    @PostMapping("/digest/test")
+    public Map<String, Object> digestTest(@RequestParam(required = false) String date) {
+        java.time.LocalDate day;
+        try {
+            day = date == null || date.isBlank()
+                    ? java.time.LocalDate.now().minusDays(1)
+                    : java.time.LocalDate.parse(date);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "date must be an ISO date such as 2026-11-19", "date");
+        }
+        DailyDigestService.Result result = digest.send(day);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("date", day.toString());
+        out.put("sent", result.sent());
+        if (result.reason() != null) {
+            out.put("reason", result.reason());
+        }
+        out.put("subject", result.subject());
+        out.put("text", result.text());
+        audit.record("digest.test", day.toString(), null);
+        return out;
+    }
+
+    @GetMapping("/settings")
+    public Map<String, Object> settings(jakarta.servlet.http.HttpServletRequest request) {
+        Map<String, Object> guardrails = new java.util.LinkedHashMap<>();
+        guardrails.put("prompt_log_redaction", props.getGuardrails().isPromptLogRedaction());
+        guardrails.put("redact_before_send", props.getGuardrails().isRedactBeforeSend());
+        guardrails.put("moderation", props.getGuardrails().isModeration());
+
+        // The principal is set by AuthFilter for every /admin call. Reporting the scopes lets
+        // the console render read-only instead of letting the operator discover it via a 403.
+        // A token name and its scopes are not credentials, so this is safe to expose.
+        TenancyService.Principal principal = request.getAttribute(
+                com.anindra.path.config.AuthFilter.ADMIN_PRINCIPAL_ATTR) instanceof TenancyService.Principal p
+                ? p : null;
+        List<String> scopes = principal == null ? List.of()
+                : principal.scopes().stream().sorted().toList();
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("auth_mode", props.getProxyAuth().isEnabled() ? "proxy" : "token");
+        out.put("subject", principal == null ? null : principal.name());
+        out.put("scopes", scopes);
+        out.put("can_write", scopes.contains("write"));
+        out.put("prompt_logging", props.getPromptLogging().isEnabled());
+        out.put("guardrails", guardrails);
+        out.put("rate_limit_backend", props.getRateLimit().getBackend());
+        out.put("public_models", props.isPublicModels());
+        out.put("demo_key_bootstrap", props.isBootstrapDemoKey());
+        return out;
+    }
+
+    // --------------------------------------------------------------- aliases
+
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(
+            com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AliasInput(String alias, List<String> models, String description) {
+    }
+
+    @GetMapping("/aliases")
+    public List<Map<String, Object>> aliases() {
+        return aliasService.list();
+    }
+
+    @PostMapping("/aliases")
+    public Map<String, Object> createAlias(@RequestBody AliasInput input) {
+        var created = aliasService.create(input.alias(), input.models(), input.description());
+        audit.record("alias.create", "alias:" + created.get("alias"), input);
+        return created;
+    }
+
+    @DeleteMapping("/aliases/{alias}")
+    public Map<String, Object> deleteAlias(@PathVariable String alias) {
+        aliasService.delete(alias);
+        audit.record("alias.delete", "alias:" + alias, null);
+        return Map.of("deleted", true, "alias", alias);
+    }
+
+    // -------------------------------------------------------------- tenancy
+
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(
+            com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ProjectInput(String slug, String name,
+                               @com.fasterxml.jackson.annotation.JsonAlias("creditLimitUsd") java.math.BigDecimal creditLimitUsd,
+                               @com.fasterxml.jackson.annotation.JsonAlias("dailyLimitUsd") java.math.BigDecimal dailyLimitUsd,
+                               @com.fasterxml.jackson.annotation.JsonAlias("monthlyLimitUsd") java.math.BigDecimal monthlyLimitUsd,
+                               @com.fasterxml.jackson.annotation.JsonAlias("rpmLimit") Integer rpmLimit,
+                               @com.fasterxml.jackson.annotation.JsonAlias("maxConcurrentRequests")
+                               Integer maxConcurrentRequests) {
+    }
+
+    public record TokenInput(String name, String scopes) {
+    }
+
+    @GetMapping("/projects")
+    public List<Map<String, Object>> projects() {
+        return tenancy.listProjects();
+    }
+
+    @PostMapping("/projects")
+    public Map<String, Object> createProject(@RequestBody ProjectInput input) {
+        var created = tenancy.createProject(input.slug(), input.name(),
+                input.creditLimitUsd(), input.dailyLimitUsd(), input.monthlyLimitUsd(),
+                input.rpmLimit(), input.maxConcurrentRequests());
+        audit.record("project.create", "project:" + created.get("id"), input);
+        return created;
+    }
+
+    @PatchMapping("/projects/{id}")
+    public Map<String, Object> updateProject(@PathVariable Long id, @RequestBody ProjectInput input) {
+        var updated = tenancy.updateProjectLimits(id, input.creditLimitUsd(),
+                input.dailyLimitUsd(), input.monthlyLimitUsd(),
+                input.rpmLimit(), input.maxConcurrentRequests());
+        audit.record("project.update", "project:" + id, input);
+        return updated;
+    }
+
+    @GetMapping("/projects/{id}/usage")
+    public Map<String, Object> projectUsage(@PathVariable Long id) {
+        return tenancy.projectSummary(id);
+    }
+
+    @DeleteMapping("/projects/{id}")
+    public Map<String, Object> deleteProject(@PathVariable Long id) {
+        tenancy.deleteProject(id);
+        audit.record("project.delete", "project:" + id, null);
+        return Map.of("deleted", true, "id", id);
+    }
+
+    @GetMapping("/tokens")
+    public List<Map<String, Object>> tokens() {
+        return tenancy.listTokens();
+    }
+
+    @PostMapping("/tokens")
+    public Map<String, Object> createToken(@RequestBody TokenInput input) {
+        var created = tenancy.createToken(input.name(), input.scopes());
+        audit.record("token.create", "token:" + created.token().getId(), input);
+        Map<String, Object> view = new java.util.LinkedHashMap<>();
+        view.put("id", created.token().getId());
+        view.put("name", created.token().getName());
+        view.put("scopes", created.token().getScopes());
+        view.put("token", created.plaintext());
+        view.put("warning", "Store this token now. It is not shown again.");
+        return view;
+    }
+
+    @PostMapping("/tokens/{id}/revoke")
+    public Map<String, Object> revokeToken(@PathVariable Long id) {
+        var revoked = tenancy.revokeToken(id);
+        audit.record("token.revoke", "token:" + id, null);
+        return revoked;
+    }
+
+    // ------------------------------------------------------------- reporting
+
+    @GetMapping("/stats")
+    public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window,
+                                     @RequestParam(required = false) Long projectId,
+                                     @RequestParam(required = false) String bucket) {
+        return reporting.stats(window, projectId, bucket);
+    }
+
+    @GetMapping("/usage")
+    public Map<String, Object> usage(@RequestParam(required = false) Long keyId,
+                                     @RequestParam(required = false) Long projectId,
+                                     @RequestParam(required = false) String endUser,
+                                     @RequestParam(defaultValue = "24h") String window,
+                                     @RequestParam(defaultValue = "100") int limit) {
+        return reporting.usage(keyId, projectId, endUser, window, limit);
+    }
+
+    @PostMapping("/providers/{id}/probe")
+    public Map<String, Object> probe(@PathVariable Long id) {
+        return probes.probe(id);
+    }
+
+    @GetMapping("/providers/health")
+    public List<Map<String, Object>> providerHealth() {
+        return probes.summary();
+    }
+
+    @GetMapping(value = "/usage/export", produces = "text/csv")
+    public org.springframework.http.ResponseEntity<String> exportUsage(
+            @RequestParam(required = false) Long keyId,
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String endUser,
+            @RequestParam(defaultValue = "30d") String window,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(defaultValue = "10000") int limit) {
+        java.time.Duration parsed = com.anindra.path.api.Durations.cap(
+                com.anindra.path.api.Durations.parse(window, java.time.Duration.ofDays(30)),
+                java.time.Duration.ofDays(365));
+        // from/to make the slice explicit, which is what an archive before a retention purge
+        // needs; window alone always ends at "now".
+        java.time.Instant toInstant = to == null || to.isBlank()
+                ? java.time.Instant.now() : instant(to, "to");
+        java.time.Instant fromInstant = from == null || from.isBlank()
+                ? toInstant.minus(parsed) : instant(from, "from");
+        if (fromInstant.isAfter(toInstant)) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "'from' must be before 'to'.", "from");
+        }
+        String csv = reporting.usageCsv(keyId, projectId, endUser, fromInstant, toInstant, limit);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"usage-" + toInstant + ".csv\"")
+                .body(csv);
+    }
+
+    /** ISO-8601 instant, or a plain date taken as UTC midnight. */
+    private static java.time.Instant instant(String value, String param) {
+        try {
+            return java.time.Instant.parse(value.trim());
+        } catch (java.time.format.DateTimeParseException ignored) {
+            try {
+                return java.time.LocalDate.parse(value.trim())
+                        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+            } catch (java.time.format.DateTimeParseException e) {
+                throw com.anindra.path.api.ApiException.badRequest(
+                        "'" + param + "' must be an ISO-8601 instant or date, e.g. 2026-11-19.", param);
+            }
+        }
+    }
+
+    @GetMapping("/audit")
+    public List<Map<String, Object>> auditLog(@RequestParam(required = false) String action,
+                                              @RequestParam(defaultValue = "100") int limit) {
+        return audit.list(action, limit);
+    }
+
+    @GetMapping("/prompt-logs")
+    public List<Map<String, Object>> promptLogs(@RequestParam(required = false) Long keyId,
+                                                @RequestParam(defaultValue = "50") int limit) {
+        return promptLogs.list(keyId, limit);
+    }
+
+    @PostMapping("/models/sync")
+    public Map<String, Object> syncModels() {
+        return modelSync.sync();
+    }
+}

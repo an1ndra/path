@@ -60,8 +60,8 @@ postgres:
   persistence:
     size: 10Gi
 
-# Optional in-chart Valkey (Redis protocol), needed for shared rate limiting across
-# replicas and for a shared circuit breaker.
+# Optional in-chart Valkey (Redis protocol). Enabling it also turns on the shared-state
+# backend, so rate limits, circuit breaker state and in-flight caps are cluster-wide.
 valkey:
   enabled: false
   image: valkey/valkey:8-alpine
@@ -115,3 +115,11 @@ serviceMonitor:
   enabled: false
   interval: 30s
   labels: {}
+
+# Prometheus Operator PrometheusRule with the recording and alerting rules from
+# deploy/prometheus/path-rules.yml. Off by default: it needs the operator CRDs.
+prometheusRule:
+  enabled: false
+  labels: {}
+  # Annotations point here; change it when you fork or mirror the repository.
+  runbookBase: "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts"

@@ -1,0 +1,95 @@
+# Dokploy compose stack: Postgres + the gateway. The admin console is its own Dokploy
+# application (separate repository) and talks to this one over HTTP.
+#
+# In Dokploy: Compose → this repository → compose path deploy/dokploy/compose.yml, then set
+# the environment variables below in the UI. Nothing here contains a secret.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-path}
+      POSTGRES_USER: ${POSTGRES_USER:-path}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-path} -d ${POSTGRES_DB:-path}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Optional: shared rate limits and a shared circuit view across replicas.
+  # Enable by setting GATEWAY_RATE_LIMIT_BACKEND=valkey and uncommenting `profiles`.
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    profiles: ["valkey"]
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-path}
+      DB_USER: ${POSTGRES_USER:-path}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # 32-byte base64. Generate once and keep it: it decrypts stored provider keys, so
+      # losing it means re-entering every provider credential.
+      PORT: "8080"
+      GATEWAY_MASTER_KEY: ${GATEWAY_MASTER_KEY:?set GATEWAY_MASTER_KEY (openssl rand -base64 32)}
+      # Only needed when the console is on another hostname. Same hostname → leave unset.
+      GATEWAY_CORS_ORIGINS: ${GATEWAY_CORS_ORIGINS:-}
+      GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:-}
+      GATEWAY_PROXY_AUTH: ${GATEWAY_PROXY_AUTH:-false}
+      GATEWAY_PROXY_AUTH_HEADER: ${GATEWAY_PROXY_AUTH_HEADER:-X-Forwarded-User}
+      GATEWAY_RATE_LIMIT_BACKEND: ${GATEWAY_RATE_LIMIT_BACKEND:-memory}
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      GATEWAY_USAGE_RETENTION: ${GATEWAY_USAGE_RETENTION:-180d}
+      GATEWAY_DRAIN_TIMEOUT: ${GATEWAY_DRAIN_TIMEOUT:-25s}
+      GATEWAY_ALERT_WEBHOOK: ${GATEWAY_ALERT_WEBHOOK:-}
+      GATEWAY_ALERT_EMAIL_TO: ${GATEWAY_ALERT_EMAIL_TO:-}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      GATEWAY_API_DOCS: "false"
+    # Provider keys are added through the console (Settings → Providers) or as
+    # OPENAI_API_KEY / ANTHROPIC_API_KEY / GROQ_API_KEY / GEMINI_API_KEY.
+    ports:
+      - "8080:8080"
+    # Routing is declared here rather than left to the Dokploy UI, so a redeploy always
+    # produces the router. TLS uses the server's default certificate (Cloudflare Origin
+    # certificate when Cloudflare is in front), which is what the proxy validates against.
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "dokploy-network"
+      traefik.http.routers.path-gateway.rule: "Host(`path.hacksubset.com`)"
+      traefik.http.routers.path-gateway.entrypoints: "websecure"
+      traefik.http.routers.path-gateway.tls: "true"
+      # Only Cloudflare's edge may reach this router. Without it the origin answers on its
+      # own public IP, so any client can skip Cloudflare (and its bot challenge) entirely and
+      # forge client-IP headers, which defeats every per-address rate limit.
+      traefik.http.routers.path-gateway.middlewares: "cf-only@file"
+      traefik.http.routers.path-gateway.service: "path-gateway"
+      traefik.http.services.path-gateway.loadbalancer.server.port: "8080"
+    # More than the drain timeout, or a redeploy truncates live streams.
+    stop_grace_period: 40s
+    volumes:
+      - pathdata:/app/data
+
+volumes:
+  pgdata:
+  pathdata:

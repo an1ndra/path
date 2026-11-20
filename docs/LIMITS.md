@@ -78,7 +78,7 @@
 - **Circuit breaker per provider.** Five consecutive failures park a provider for 30s;
   routes on a parked provider are skipped in microseconds. An upstream 429 with
   `Retry-After` parks it for exactly that long. State appears as `circuit_state` on
-  `/admin/providers`.
+  `/admin/providers`, and only one replica at a time may send the half-open probe.
 - **Timeouts are per provider.** `request_timeout_ms` and `stream_idle_timeout_ms`
   override the global defaults.
 - **Shutdown drains instead of truncating.** Readiness goes DOWN, new requests get 503,
@@ -140,12 +140,33 @@
 
 **Per-node by design**
 
-- **Circuit state and the in-flight limiter live in the JVM.** Breaking load across
-  instances makes each breaker see only its own failures, and the concurrency cap is per
-  instance. The RPM limiter and budget reservations *are* shared (Valkey and the
-  database), so money and rate limits stay correct in a cluster.
+- **Circuit state and the in-flight limiter default to the JVM.** Without
+  `GATEWAY_SHARED_STATE_BACKEND=valkey`, each breaker sees only its own failures and the
+  concurrency cap is per instance. With `valkey`, state is shared: parking a provider on
+  one replica parks it everywhere, exactly one replica claims the HALF_OPEN probe, an OPEN
+  entry expires even if the replica that opened it dies, and a killed pod's concurrency
+  permits expire after `GATEWAY_CONCURRENCY_LEASE` instead of blocking the key. The RPM
+  limiter and budget reservations are shared as before, so money and rate limits stay
+  correct in a cluster either way. Memory remains the default because the Valkey path is a
+  network call on the hot path.
 - **Fuzzing is time-boxed.** `ChatRequestFuzzTest` runs Jazzer for 10s per build; deeper
   fuzzing is a manual `jazzer` run rather than a long CI job.
+
+**Gemini surfaces**
+
+| Surface | Thinking | Safety settings | Cached content | Tools | Images |
+|---|---|---|---|---|---|
+| `OPENAI` type, compatible endpoint | dropped | dropped | priced as plain input | yes | yes |
+| `GEMINI` type, AI Studio native | `thinkingConfig` or `reasoning_effort` | passed through | `cachedContentTokenCount` priced | yes | no (422) |
+| `VERTEX` type, native | same as AI Studio | same | same | yes | no (422) |
+
+A native Gemini route rejects an OpenAI parameter it cannot honour (`frequency_penalty`,
+`presence_penalty`, `seed`, `logit_bias`, `logprobs`, `n > 1`, a non-JSON
+`response_format`, `user`) with 422 `unsupported_parameter`, the same contract as
+Anthropic. A prompt or candidate blocked by safety returns 400 `content_blocked` naming the
+category. Thinking tokens are billed as output: `completion_tokens` includes
+`thoughtsTokenCount`, and `reasoning_tokens` keeps the breakdown. Streamed tool-call deltas
+are not reassembled; the native stream carries text.
 
 **Provider-inherent**
 

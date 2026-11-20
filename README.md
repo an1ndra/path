@@ -63,7 +63,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export GROQ_API_KEY=gsk_...
 export GATEWAY_ADMIN_TOKEN=pick-something-long
 
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 First boot seeds four providers and a starter route table. To also mint a demo key
@@ -97,6 +97,7 @@ print(client.chat.completions.create(
 
 | Document | Contents |
 |---|---|
+| [Spring AI adapter](docs/SPRING-AI.md) | `path-spring-ai`: ChatModel and EmbeddingModel over the gateway |
 | [API reference](docs/API.md) | Every endpoint, request/response shapes, error codes, idempotency, cache, embeddings |
 | [Architecture](docs/ARCHITECTURE.md) | Request flow, providers, routing, what is metered |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable, timeouts, credentials, Postgres |
@@ -104,6 +105,9 @@ print(client.chat.completions.create(
 | [Limits](docs/LIMITS.md) | Design decisions and known gaps |
 | [Testing](docs/TESTING.md) | Unit tests, the 99-check smoke suite, the mock upstream |
 | [Why Path](docs/WHY-PATH.md) | Honest comparison and a 60-second demo |
+| [SSO and 2FA](docs/SSO.md) | Google/GitHub/enterprise SSO, passkeys and 2FA via an authenticating proxy |
+| [Admin UI](docs/ADMIN-UI.md) | The web console lives in `an1ndra/path-admin`; auth, hosting and CORS |
+| [Deploy on Dokploy](deploy/dokploy/README.md) | Two apps, compose or plain application, health checks, CORS |
 | [Publishing](docs/PUBLISHING.md) | Maven Central setup, signing and the release profile |
 | [Roadmap](docs/ROADMAP.md) | Delivered work and the open stories |
 | [Changelog](CHANGELOG.md) | Release notes, also used as the GitHub release body |

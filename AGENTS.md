@@ -19,17 +19,31 @@ dependency: the gateway translates to each provider's native protocol.
 # unit + integration tests (85)
 ./mvnw verify
 
-# full end-to-end suite against a mock upstream (104 checks, no real keys)
+# full end-to-end suite against a mock upstream (no real keys)
 python3 tools/mock-upstream.py 9099 &
-GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-*.jar &
+GATEWAY_ADMIN_TOKEN=test-admin java -jar path-gateway/target/path-*.jar &
 python3 tools/smoke_test.py
 
 # run locally
 export OPENAI_API_KEY=... ANTHROPIC_API_KEY=... GATEWAY_ADMIN_TOKEN=...
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 The seeder prints a demo `sk-gw-...` key on the first boot only.
+
+## Modules
+
+`./mvnw` is a Maven reactor, not a single project:
+
+| Module | Artifact | Contents |
+|---|---|---|
+| `path-gateway/` | `io.github.an1ndra:path` | the gateway jar, the runnable Spring Boot application |
+| `path-spring-ai/` | `io.github.an1ndra:path-spring-ai` | a Spring AI `ChatModel`/`EmbeddingModel` over the gateway |
+
+The gateway is the published root artifact and never depends on Spring AI; the adapter is
+the only module that knows about it. `./mvnw verify` builds both. The Dockerfile builds only
+`-pl path-gateway`, so the image does not carry the adapter's dependencies. `tools/` and
+`deploy/` stay at the repository root.
 
 ## Layout
 
@@ -176,6 +190,12 @@ a smoke check. Never claim a fix without running both.
   `v*.*.*` tag → jar + SBOM + checksums + multi-arch `ghcr.io/an1ndra/path`. The workflow
   publishes `changelog/<tag>.md` verbatim as the release body and fails if the file is
   missing or empty (`tools/changelog.py`).
+- **The image is scanned before it is published.** The workflow pushes only
+  `ghcr.io/<repo>:sha-<commit>`; Trivy gates that tag; only then does
+  `docker buildx imagetools create` copy the same digest to `<tag>` and `latest`. A failed
+  scan therefore leaves a `sha-` tag and an unused version number, not a released image.
+  The digest in the workflow summary is the one that was scanned. Do not move the version
+  tag back into the build step.
 
 ## Issue labels
 
@@ -201,6 +221,15 @@ billing change that also adds an endpoint). Never three, and never none. `effort
 is a guess, not a commitment — re-tag when reality disagrees.
 
 ## Gotchas
+
+- **IntelliJ: point Maven home at a real install, not "Use Maven wrapper".** The wrapper here
+  is `distributionType=only-script` (no `maven-wrapper.jar`), and IntelliJ's Maven server
+  resolves its own home instead of running `mvnw`. It then bootstraps Maven without the
+  plexus artifact bindings and fails with
+  `Guice/MissingImplementation: No implementation for ArtifactHandlerManager was bound`.
+  Set Settings -> Build Tools -> Maven -> Maven home to the wrapper's extracted 3.10.1
+  (`~/.m2/wrapper/dists/apache-maven-3.10.1/<hash>`) or to the IDE's bundled Maven.
+  The CLI `./mvnw` is unaffected.
 
 - **Flyway owns the schema; `ddl-auto` is `validate`.** Add `V<n>__name.sql` for every
   entity change and never edit an applied migration. `V1__baseline.sql` is written in

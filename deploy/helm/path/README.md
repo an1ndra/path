@@ -32,6 +32,9 @@ curl -s -H "X-Admin-Token: $GATEWAY_ADMIN_TOKEN" localhost:8080/actuator/health/
   safe without it.
 - `autoscaling` — CPU is a poor signal for a gateway. If you have the Prometheus adapter,
   scale on in-flight requests instead.
+- `prometheusRule.enabled` — renders the fallback/cache/spend/error/parked alerts from
+  `deploy/prometheus/path-rules.yml` as a `PrometheusRule`. Needs the Prometheus Operator
+  CRDs; `runbookBase` sets where the annotations point.
 
 ## What this chart does not do
 

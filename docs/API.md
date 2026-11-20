@@ -33,9 +33,7 @@ Every failure uses the OpenAI envelope:
 
 | Code | HTTP | Meaning |
 |---|---|---|
-| `missing_api_key` | 401 | no `Authorization` header |
-| `invalid_api_key` | 401 | unknown or malformed key |
-| `key_disabled` | 401 | key revoked or disabled |
+| `invalid_api_key` | 401 | no `Authorization` header, unknown key, or disabled key — deliberately one code, so the response cannot be used to test whether a key exists |
 | `invalid_admin_token` | 401 | bad `X-Admin-Token` |
 | `forbidden` | 403 | admin API disabled (no token configured) |
 | `model_not_found` | 404 | no enabled route for that model id |
@@ -354,7 +352,10 @@ ids land at `0.00` and are flagged in `description`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/admin/stats?window=24h` | totals, percentiles, cache, providers/models |
+| GET | `/admin/stats?window=24h&bucket=1h` | the same, plus a bucketed time series |
 | GET | `/admin/usage?window=24h&limit=100&keyId=` | raw usage rows |
+| POST | `/admin/digest/test?date=2026-11-19` | send yesterday's summary now and return its text |
+| GET | `/admin/usage/export?from=2026-01-01&to=2026-02-01` | CSV for an explicit date slice (archive before a purge) |
 
 ```json
 {
@@ -363,7 +364,7 @@ ids land at `0.00` and are flagged in `description`.
   "ttft_ms": {"p50": 1, "p95": 5},
   "tokens_per_second": {"p50": 7000.0},
   "cache": {"prompt_tokens": 246, "cached_input_tokens": 84,
-            "hit_ratio": 0.3415, "savings_usd": 0.00002061},
+            "hit_ratio": 0.3415, "savings_usd": 0.00002061, "semantic_hits": 3},
   "fallback_requests": 3,
   "estimated_usage_requests": 0,
   "by_provider": {"openai": {"requests": 12, "cost_usd": 0.0002}},
@@ -371,7 +372,44 @@ ids land at `0.00` and are flagged in `description`.
 }
 ```
 
+`bucket` is optional and accepts `1m`, `5m`, `1h` or `1d`; anything else is a 400 that
+names the accepted values. When present the response also carries:
+
+```json
+{
+  "bucket": "1h",
+  "series": [
+    {"from": "2026-11-17T10:00:00Z", "requests": 412, "cost_usd": 0.71,
+     "failures": 3, "p95_latency_ms": 812}
+  ]
+}
+```
+
+Every bucket in the window is present, zeroes included, and the window is clamped to at
+most 500 points. The series is one query over `usage_records` for the whole window,
+bucketed in Java (`AdminReportingService`), not one query per point; `p95_latency_ms`
+covers successful calls only. Omitting `bucket` leaves the response exactly as before.
+
 ---
+
+### Gemini extensions
+
+On a route whose provider type is `GEMINI` or `VERTEX`, the chat body accepts two
+Gemini-native fields in addition to the OpenAI shape:
+
+```json
+{"model": "gemini-2.5-pro",
+ "messages": [{"role": "user", "content": "..."}],
+ "thinkingConfig": {"thinkingBudget": 2048, "includeThoughts": true},
+ "safetySettings": [{"category": "HARM_CATEGORY_HATE_SPEECH",
+                     "threshold": "BLOCK_ONLY_HIGH"}]}
+```
+
+`reasoning_effort` (`minimal`, `low`, `medium`, `high`) is accepted as a shortcut for a
+thinking budget. Thinking tokens are returned in `usage.completion_tokens` (and broken out
+as `completion_tokens_details.reasoning_tokens`) because Gemini bills them as output. A
+blocked request returns 400 `content_blocked` with the safety category; a parameter the
+adapter cannot honour returns 422 `unsupported_parameter`.
 
 ## Metering fields
 
@@ -387,6 +425,7 @@ Each usage row records:
 | `input_cost_usd`, `cached_input_cost_usd`, `cache_write_cost_usd`, `output_cost_usd` | itemised |
 | `cost_usd` | total, 8 decimals |
 | `cached_savings_usd` | what cached tokens would have cost at the input rate |
+| `cache_tier` | `exact` or `semantic` when a cache served the call, null otherwise; how `/admin/stats` counts semantic hits |
 | `ttft_ms` | time to first streamed token |
 | `tokens_per_second` | generation throughput (post-TTFT window) |
 | `upstream_request_id` | provider request id, for support |

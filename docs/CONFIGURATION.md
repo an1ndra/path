@@ -9,7 +9,8 @@ except the provider credentials you actually use.
 |---|---|---|
 | `PORT` | `8080` | HTTP port |
 | `GATEWAY_ADMIN_TOKEN` | empty (admin off) | admin shared secret |
-| `GATEWAY_PUBLIC_MODELS` | `true` | allow keyless `/v1/models` |
+| `GATEWAY_PUBLIC_MODELS` | `false` | allow keyless `/v1/models` (it names every model and alias) |
+| `GATEWAY_CLIENT_IP_HEADER` | empty | header holding the real client address, e.g. `CF-Connecting-IP`; empty ignores `X-Forwarded-For` |
 | `GATEWAY_CORS_ORIGINS` | `*` | comma-separated origin patterns |
 | `GATEWAY_MAX_REQUEST_BYTES` | `1048576` | request bodies larger than this get 413 |
 | `GATEWAY_DRAIN_TIMEOUT` | `30s` | how long shutdown waits for in-flight streams |
@@ -19,6 +20,7 @@ except the provider credentials you actually use.
 | Variable | Default | Meaning |
 |---|---|---|
 | `GATEWAY_BOOTSTRAP_DEMO_KEY` | `false` | create a demo key when the table is empty (ignored in `prod`) |
+| `GATEWAY_SEED_DEFAULTS` | `true` | seed the example provider/route catalogue on boot; set `false` on a real deployment |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests per key (0 = unlimited) |
@@ -50,14 +52,29 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_SHARED_STATE_BACKEND` | `memory` | `valkey` shares circuit-breaker and in-flight state across replicas |
+| `GATEWAY_SHARED_STATE_PREFIX` | `path` | key prefix for that state, same convention as the rate limiter |
+| `GATEWAY_CONCURRENCY_LEASE` | `300s` | how long a Valkey in-flight permit survives a dead pod; must exceed the slowest request |
+| `GATEWAY_BREAKER_PROBE_LEASE` | `10s` | how long the single HALF_OPEN probe may hold its claim |
+| `GATEWAY_ALERT_ERROR_RATE` | `0.25` | provider EWMA error rate above which `provider.error_rate_high` fires; `0` disables the check |
+| `GATEWAY_ALERT_MIN_SAMPLES` | `20` | samples a provider needs before its error rate is trusted (a cold start is not an incident) |
 | `GATEWAY_SEMANTIC_MODEL` | blank (off) | public model used to embed prompts for the semantic cache |
 | `GATEWAY_SEMANTIC_MAX_ENTRIES` | `200` | candidates compared per key and model |
+| `GATEWAY_ALERT_EMAIL_TO` (or the console) | blank (off) | comma-separated recipients for alert email |
+| `GATEWAY_ALERT_EMAIL_FROM` | `path-gateway@localhost` | From address |
+| `GATEWAY_DIGEST` | `true` | send one daily summary email (needs the alert email channel; off without it) |
+| `GATEWAY_DIGEST_CRON` | `0 0 8 * * *` | when to send it, in the gateway's time zone |
+| `SPRING_MAIL_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | — | SMTP server; without `SPRING_MAIL_HOST` email alerting stays off |
 | `GATEWAY_GUARDRAILS_LOG_REDACTION` | `true` | redact PII before a prompt is written to the prompt log |
 | `GATEWAY_GUARDRAILS_REDACT` | `false` | redact the prompt the provider receives |
 | `GATEWAY_GUARDRAILS_MODERATION` | `false` | pre-flight moderation call (OpenAI-shaped providers) |
 | `GATEWAY_GUARDRAILS_MODERATION_MODEL` | `omni-moderation-latest` | model used for that call |
-| `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts before 429s |
+| `GATEWAY_ADMIN_AUTH_FAILURES` | `10` | failed admin auth attempts per address before 429s |
+| `GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES` | `0` (off) | failures across all addresses in the window; only for an origin that cannot be reached except through a trusted proxy |
 | `GATEWAY_ADMIN_AUTH_WINDOW` | `5m` | window for those failures |
+| `GATEWAY_CLIENT_AUTH_FAILURES` | `60` | rejected API keys per address per window before 429s (stops the key-validity oracle being usable as a guessing channel) |
+| `GATEWAY_CLIENT_AUTH_WINDOW` | `1m` | window for those rejections |
+| `GATEWAY_CLIENT_AUTH_GLOBAL_FAILURES` | `0` (off) | rejections across all addresses in the window |
 | `GATEWAY_API_DOCS` | `true` (false in `prod`) | serve `/v3/api-docs` |
 | `GATEWAY_PROMPT_LOGGING` | `false` | store redacted request/response bodies |
 | `GATEWAY_PROMPT_LOG_RETENTION` | `7d` | how long prompt logs are kept |
@@ -114,8 +131,31 @@ curl -s -X POST localhost:8080/admin/routes -H "$A" -H 'Content-Type: applicatio
 
 `POST /admin/models/sync` imports Gemini's list (image and embedding ids are filtered
 out) but leaves unknown prices at 0.00, so set them from Google's pricing page before
-sending traffic. The native `generateContent` protocol is not used; the compatible layer
-covers chat, streaming, tools, images and embeddings.
+sending traffic.
+
+### Gemini native (AI Studio and Vertex)
+
+The `OPENAI`-type row above uses Google's compatible endpoint. A `GEMINI` or `VERTEX`
+provider speaks native `generateContent` instead, which is what carries `thinkingConfig`,
+`safetySettings` and cached-content accounting:
+
+```bash
+# AI Studio: an API key, like any other provider
+curl -s -X POST localhost:8080/admin/providers -H "$A" -H 'Content-Type: application/json' \
+  -d '{"slug":"gemini-native","type":"GEMINI",
+       "base_url":"https://generativelanguage.googleapis.com/v1beta","api_key":"AIza..."}'
+
+# Vertex: a service-account JSON as the credential, plus project and location
+curl -s -X POST localhost:8080/admin/providers -H "$A" -H 'Content-Type: application/json' \
+  -d "{\"slug\":\"vertex\",\"type\":\"VERTEX\",\"project\":\"my-project\",
+       \"location\":\"us-central1\",\"api_key\":$(jq -Rs . < service-account.json)}"
+```
+
+`base_url` may be omitted for `VERTEX`: it defaults to
+`https://<location>-aiplatform.googleapis.com`. The service-account JSON is encrypted with
+the same master key as every other credential and is never returned by the admin API.
+Vertex has no model-listing endpoint, so `/admin/models/sync` skips it and its probe says
+so; add its routes by hand.
 
 ## Database
 
@@ -130,7 +170,7 @@ covers chat, streaming, tools, images and embeddings.
 export SPRING_PROFILES_ACTIVE=postgres
 export DB_URL=jdbc:postgresql://localhost:5432/aigateway
 export DB_USER=aigateway DB_PASSWORD=aigateway
-./mvnw spring-boot:run
+./mvnw -pl path-gateway spring-boot:run
 ```
 
 or `docker compose up --build`.

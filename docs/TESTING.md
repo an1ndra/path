@@ -30,7 +30,7 @@ admin surface and metering.
 
 ```bash
 python3 tools/mock-upstream.py 9099 &
-GATEWAY_ADMIN_TOKEN=test-admin java -jar target/path-0.1.0.jar &
+GATEWAY_ADMIN_TOKEN=test-admin java -jar path-gateway/target/path-0.2.2.jar &
 python3 tools/smoke_test.py
 ```
 

@@ -73,7 +73,7 @@ gpg --armor --export-secret-keys <FINGERPRINT> > path-signing-key.asc
 ```bash
 # 1. Confirm what will be uploaded (nothing leaves the machine).
 ./mvnw -P release -DskipTests verify
-ls target/path-*.jar target/*.asc
+ls path-gateway/target/path-*.jar path-gateway/target/*.asc path-spring-ai/target/path-spring-ai-*.jar
 
 # 2. Upload to the Portal. autoPublish=false, so you review before release.
 MAVEN_GPG_PASSPHRASE='...' ./mvnw -P release -DskipTests deploy
@@ -93,7 +93,7 @@ path-0.1.0.pom
 
 The runnable fat jar is **not** published; the GitHub release and container image carry
 it. `-P release` skips `spring-boot:repackage` for that reason — which also means
-`target/path-0.1.0.jar` is the **plain library** after a release build and `java -jar` on
+`path-gateway/target/path-0.2.2.jar` is the **plain library** after a release build and `java -jar` on
 it fails with "no main manifest attribute". Run a normal `./mvnw package` to get the
 runnable jar back.
 
@@ -108,8 +108,26 @@ Add three repository secrets and one variable:
 | secret | `CENTRAL_USERNAME` / `CENTRAL_PASSWORD` | the Portal token |
 | variable | `PUBLISH_TO_CENTRAL` | `true` to enable the step |
 
+The build is a reactor: `io.github.an1ndra:path-parent` (pom), `path` (the gateway) and
+`path-spring-ai` (the adapter). A release publishes all three, because a consumer resolving
+the adapter needs its parent POM.
+
 The release workflow then publishes on each `v*` tag. With the variable unset the step is
 skipped, so a fork never tries to publish.
+
+## Container image order
+
+The image is gated before it is named. The workflow:
+
+1. builds and pushes **only** `ghcr.io/an1ndra/path:sha-<commit>`;
+2. runs Trivy against that tag;
+3. promotes the exact digest with
+   `docker buildx imagetools create -t ghcr.io/an1ndra/path:<tag> -t ghcr.io/an1ndra/path:latest ghcr.io/an1ndra/path:sha-<commit>`;
+4. writes the promoted digest to the workflow summary.
+
+A failing scan therefore burns no version number and leaves no version tag a deployment
+could pull; the `sha-` tag stays for traceability. See issue #80 for the two releases that
+were lost to the old order.
 
 ## Consumers
 

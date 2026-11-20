@@ -1,0 +1,177 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  compression:
+    enabled: true
+
+spring:
+  application:
+    name: path
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/gateway;MODE=PostgreSQL;AUTO_SERVER=TRUE}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 20
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # An existing pre-Flyway schema is marked as V1 instead of being recreated.
+    baseline-on-migrate: true
+    baseline-version: 1
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        # Store enums as varchar so one migration works on H2 and Postgres.
+        type.preferred_enum_jdbc_type: STRING
+  jackson:
+    default-property-inclusion: non_null
+  mvc:
+    problemdetails:
+      enabled: false
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+gateway:
+  # Empty means the admin API is disabled (403). Set GATEWAY_ADMIN_TOKEN to enable it.
+  admin-token: ${GATEWAY_ADMIN_TOKEN:}
+  # Allow GET /v1/models without an API key.
+  public-models: ${GATEWAY_PUBLIC_MODELS:false}
+  # Header that carries the real client address when a trusted edge sits in front
+  # (e.g. CF-Connecting-IP behind Cloudflare). Empty = use the socket address and ignore
+  # X-Forwarded-For, which a client can forge to dodge per-address limits.
+  client-ip-header: ${GATEWAY_CLIENT_IP_HEADER:}
+  cors-origins: ${GATEWAY_CORS_ORIGINS:*}
+  connect-timeout: 10s
+  request-timeout: 180s
+  stream-idle-timeout: 120s
+  # 32-byte base64 key. When empty, a key is generated and stored at master-key-path.
+  master-key: ${GATEWAY_MASTER_KEY:}
+  master-key-path: ${GATEWAY_MASTER_KEY_PATH:./data/master.key}
+  bootstrap-demo-key: ${GATEWAY_BOOTSTRAP_DEMO_KEY:false}
+  # Seed the example provider/route catalogue on boot. Turn off for a real deployment,
+  # otherwise four providers you never configured appear in the console on every start.
+  seed-defaults: ${GATEWAY_SEED_DEFAULTS:true}
+  default-rpm-limit: ${GATEWAY_DEFAULT_RPM:120}
+  default-credit-limit-usd: ${GATEWAY_DEFAULT_CREDIT_USD:}
+  default-max-concurrent: ${GATEWAY_DEFAULT_MAX_CONCURRENT:8}
+  max-request-bytes: ${GATEWAY_MAX_REQUEST_BYTES:1048576}
+  max-output-tokens: ${GATEWAY_MAX_OUTPUT_TOKENS:0}
+  drain-timeout: ${GATEWAY_DRAIN_TIMEOUT:30s}
+  breaker:
+    failure-threshold: ${GATEWAY_BREAKER_FAILURES:5}
+    open-duration: ${GATEWAY_BREAKER_OPEN:30s}
+    max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
+    # How long a HALF_OPEN probe holds the claim before another replica may retry.
+    probe-lease: ${GATEWAY_BREAKER_PROBE_LEASE:10s}
+  # Circuit-breaker and in-flight state. "valkey" shares them across replicas; memory is
+  # per JVM and a restart clears it.
+  shared-state:
+    backend: ${GATEWAY_SHARED_STATE_BACKEND:memory}
+    prefix: ${GATEWAY_SHARED_STATE_PREFIX:path}
+    concurrency-lease: ${GATEWAY_CONCURRENCY_LEASE:300s}
+  cache:
+    semantic-model: ${GATEWAY_SEMANTIC_MODEL:}
+    semantic-max-entries: ${GATEWAY_SEMANTIC_MAX_ENTRIES:200}
+    max-body-bytes: ${GATEWAY_CACHE_MAX_BYTES:2097152}
+  proxy-auth:
+    # Set to true only when the gateway is unreachable except through the proxy that sets
+    # this header. See docs/SSO.md.
+    enabled: ${GATEWAY_PROXY_AUTH:false}
+    header: ${GATEWAY_PROXY_AUTH_HEADER:X-Forwarded-User}
+    scopes: ${GATEWAY_PROXY_AUTH_SCOPES:read,write}
+  admin-auth:
+    max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
+    window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}
+    global-max-failures: ${GATEWAY_ADMIN_AUTH_GLOBAL_FAILURES:0}
+  client-auth:
+    max-failures: ${GATEWAY_CLIENT_AUTH_FAILURES:60}
+    window: ${GATEWAY_CLIENT_AUTH_WINDOW:1m}
+    global-max-failures: ${GATEWAY_CLIENT_AUTH_GLOBAL_FAILURES:0}
+  guardrails:
+    prompt-log-redaction: ${GATEWAY_GUARDRAILS_LOG_REDACTION:true}
+    redact-before-send: ${GATEWAY_GUARDRAILS_REDACT:false}
+    moderation: ${GATEWAY_GUARDRAILS_MODERATION:false}
+    moderation-model: ${GATEWAY_GUARDRAILS_MODERATION_MODEL:omni-moderation-latest}
+  rate-limit:
+    backend: ${GATEWAY_RATE_LIMIT_BACKEND:memory}
+    prefix: ${GATEWAY_RATE_LIMIT_PREFIX:path}
+  prompt-logging:
+    enabled: ${GATEWAY_PROMPT_LOGGING:false}
+    retention: ${GATEWAY_PROMPT_LOG_RETENTION:7d}
+    max-body-bytes: ${GATEWAY_PROMPT_LOG_MAX_BYTES:65536}
+  alerts:
+    email-to: ${GATEWAY_ALERT_EMAIL_TO:}
+    email-from: ${GATEWAY_ALERT_EMAIL_FROM:path-gateway@localhost}
+    webhook-url: ${GATEWAY_ALERT_WEBHOOK:}
+    cooldown: ${GATEWAY_ALERT_COOLDOWN:1h}
+    budget-threshold: ${GATEWAY_ALERT_BUDGET_THRESHOLD:0.8}
+  digest:
+    # One email a day summarising yesterday. Only sends when an email channel is configured.
+    enabled: ${GATEWAY_DIGEST:true}
+    cron: "${GATEWAY_DIGEST_CRON:0 0 8 * * *}"
+  usage-retention: ${GATEWAY_USAGE_RETENTION:180d}
+  idempotency:
+    ttl: ${GATEWAY_IDEMPOTENCY_TTL:24h}
+    pending-timeout: ${GATEWAY_IDEMPOTENCY_PENDING:2m}
+    max-response-bytes: ${GATEWAY_IDEMPOTENCY_MAX_BYTES:2097152}
+  # Upstream credentials. A key stored through the admin API takes precedence.
+  providers:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+    groq:
+      api-key: ${GROQ_API_KEY:}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      group:
+        providers:
+          include: provider
+          show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  health:
+    redis:
+      enabled: false
+    # SMTP is configured from the console (Settings -> alert email), not from Spring
+    # properties, so the stock mail indicator would probe an empty host and report DOWN,
+    # marking the container unhealthy for a channel that is optional.
+    mail:
+      enabled: false
+  tracing:
+    sampling:
+      probability: ${GATEWAY_TRACE_SAMPLE:0}
+
+springdoc:
+  api-docs:
+    enabled: ${GATEWAY_API_DOCS:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${GATEWAY_SWAGGER_UI:false}
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.anindra.path: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %logger{28} - %msg%n"

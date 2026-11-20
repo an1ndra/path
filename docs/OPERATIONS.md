@@ -139,6 +139,22 @@ digest is written to the workflow summary so it can be pinned.
 - **OpenAPI** — springdoc publishes `/v3/api-docs`; CI uploads the generated spec as a
   build artifact so drift is visible.
 
+## Cluster state
+
+Circuit-breaker and in-flight counters default to memory, one node each. Set
+`GATEWAY_SHARED_STATE_BACKEND=valkey` (same Redis connection as the rate limiter) to share
+them:
+
+- parking a provider on one replica blocks it on the others within one probe interval
+- exactly one replica sends the HALF_OPEN probe; the claim also expires after
+  `GATEWAY_BREAKER_PROBE_LEASE`, so a dead prober cannot wedge a provider
+- an OPEN entry expires on its own after its retry-after, even if the opener is gone
+- in-flight permits are leased (`GATEWAY_CONCURRENCY_LEASE`), so a killed pod's permits
+  age out instead of blocking a key forever
+
+`/actuator/health/providers` and `/admin/providers` read the same store, so with Valkey the
+circuit state they show is the cluster's, not the answering pod's.
+
 ## Retention, archiving and partitioning
 
 `GATEWAY_USAGE_RETENTION` (default `180d`, `0` keeps everything) drives a nightly purge at

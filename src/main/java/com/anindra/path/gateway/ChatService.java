@@ -110,7 +110,7 @@ public class ChatService {
             }
         }
 
-        long available = chain.stream().filter(r -> breaker.isAvailable(r.provider().getId())).count();
+        long available = chain.stream().filter(r -> !breaker.isParked(r.provider().getId())).count();
         int maxAttempts = Math.min(chain.size(), Math.max(1, props.getBreaker().getMaxAttempts()));
 
         for (int i = 0; i < chain.size() && attempts < maxAttempts; i++) {

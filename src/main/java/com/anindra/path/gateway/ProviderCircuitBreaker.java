@@ -15,8 +15,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * A provider that keeps failing is parked for {@code open-duration}, during which routes
  * on it are skipped in microseconds instead of costing every request a connect timeout.
- * After the window a probe request is allowed; success closes the circuit, failure reopens it.
- * An upstream 429 with {@code Retry-After} parks the provider for exactly that long.
+ * After the window a single probe request is allowed; success closes the circuit, failure
+ * reopens it. An upstream 429 with {@code Retry-After} parks the provider for exactly that long.
+ *
+ * <p>State lives in a {@link CircuitBreakerStore}: memory by default, Valkey when
+ * {@code gateway.shared-state.backend=valkey}. The interface is what makes "exactly one
+ * replica probes" possible at all.
  */
 @Component
 @RequiredArgsConstructor
@@ -24,109 +28,108 @@ public class ProviderCircuitBreaker {
 
     public enum State {CLOSED, OPEN, HALF_OPEN}
 
-    private static final class Entry {
-        State state = State.CLOSED;
-        int failures;
-        long openUntilMs;
-    }
-
-    private final Map<Long, Entry> entries = new ConcurrentHashMap<>();
-    /** Providers whose gauge has been registered; one gauge per provider, updated on scrape. */
-    private final java.util.Set<Long> gauged = ConcurrentHashMap.newKeySet();
     private final GatewayProperties props;
     private final com.anindra.path.admin.AlertService alerts;
     private final MeterRegistry metrics;
+    private final CircuitBreakerStore store;
 
-    /**
-     * One stable entry per provider. The Prometheus gauge reads the entry's state on scrape,
-     * so it stays correct without a callback on every transition.
-     */
-    private Entry entry(Long providerId) {
-        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+    /** Providers whose Prometheus gauge is registered; the gauge reads the store on scrape. */
+    private final java.util.Set<Long> gauged = ConcurrentHashMap.newKeySet();
+
+    private void registerGauge(Long providerId) {
         if (gauged.add(providerId)) {
             metrics.gauge("path.provider.circuit.open",
                     java.util.List.of(io.micrometer.core.instrument.Tag.of(
                             "provider_id", String.valueOf(providerId))),
-                    entry, e -> e.state == State.OPEN ? 1.0 : 0.0);
+                    providerId,
+                    id -> store.load(id).state() == CircuitBreakerStore.State.OPEN ? 1.0 : 0.0);
         }
-        return entry;
     }
 
     /** Read-only projection used by the admin API. */
     public Map<String, Object> snapshot() {
         Map<String, Object> out = new LinkedHashMap<>();
-        entries.forEach((providerId, entry) -> out.put(String.valueOf(providerId), Map.of(
-                "state", entry.state.name().toLowerCase(),
-                "failures", entry.failures,
-                "retry_after_seconds", retryAfterSeconds(providerId))));
+        store.snapshot().forEach((providerId, entry) -> out.put(String.valueOf(providerId), Map.of(
+                "state", entry.state().name().toLowerCase(),
+                "failures", entry.failures(),
+                "retry_after_seconds", retryAfterSeconds(entry, System.currentTimeMillis()))));
         return out;
     }
 
     public State state(Long providerId) {
-        Entry entry = entries.get(providerId);
-        return entry == null ? State.CLOSED : entry.state;
+        registerGauge(providerId);
+        return stateOf(store.load(providerId));
     }
 
     public long retryAfterSeconds(Long providerId) {
-        Entry entry = entries.get(providerId);
-        if (entry == null || entry.state != State.OPEN) {
-            return 0;
-        }
-        return Math.max(0, (entry.openUntilMs - System.currentTimeMillis()) / 1000);
+        return retryAfterSeconds(store.load(providerId), System.currentTimeMillis());
     }
 
-    /** True when a request may be sent to this provider right now. */
+    /** True when the provider is parked right now, without consuming the half-open probe. */
+    public boolean isParked(Long providerId) {
+        CircuitBreakerStore.Snapshot entry = store.load(providerId);
+        return entry.state() == CircuitBreakerStore.State.OPEN
+                && System.currentTimeMillis() < entry.openUntilMs();
+    }
+
+    /**
+     * True when a request may be sent to this provider right now. When an OPEN window has
+     * elapsed, the first caller claims the single HALF_OPEN probe; everyone else is told no
+     * until that probe reports back or its lease expires.
+     */
     public boolean isAvailable(Long providerId) {
-        Entry entry = entry(providerId);
-        synchronized (entry) {
-            if (entry.state != State.OPEN) {
-                return true;
-            }
-            if (System.currentTimeMillis() >= entry.openUntilMs) {
-                entry.state = State.HALF_OPEN;
-                return true;
-            }
+        registerGauge(providerId);
+        CircuitBreakerStore.Snapshot entry = store.load(providerId);
+        if (entry.state() == CircuitBreakerStore.State.CLOSED) {
+            return true;
+        }
+        if (entry.state() == CircuitBreakerStore.State.HALF_OPEN) {
             return false;
         }
+        long now = System.currentTimeMillis();
+        if (now < entry.openUntilMs()) {
+            return false;
+        }
+        return store.tryProbe(providerId, now, props.getBreaker().getProbeLease().toMillis());
     }
 
     public void onSuccess(Long providerId) {
-        Entry entry = entry(providerId);
-        synchronized (entry) {
-            entry.state = State.CLOSED;
-            entry.failures = 0;
-            entry.openUntilMs = 0;
-        }
+        store.close(providerId);
     }
 
     public void onFailure(Long providerId) {
-        Entry entry = entry(providerId);
-        synchronized (entry) {
-            entry.failures++;
-            if (entry.state == State.HALF_OPEN
-                    || entry.failures >= Math.max(1, props.getBreaker().getFailureThreshold())) {
-                openUntil(entry, props.getBreaker().getOpenDuration());
-                alerts.notify("provider.circuit_open", Map.of(
-                        "provider_id", providerId,
-                        "failures", entry.failures,
-                        "retry_after_seconds", Math.max(0, (entry.openUntilMs - System.currentTimeMillis()) / 1000)));
-            }
+        long now = System.currentTimeMillis();
+        CircuitBreakerStore.Snapshot opened = store.recordFailure(providerId,
+                props.getBreaker().getFailureThreshold(), now,
+                props.getBreaker().getOpenDuration().toMillis());
+        if (opened != null) {
+            alerts.notify("provider.circuit_open", Map.of(
+                    "provider_id", providerId,
+                    "failures", opened.failures(),
+                    "retry_after_seconds", retryAfterSeconds(opened, now)));
         }
     }
 
     /** Upstream asked us to back off; park the provider for exactly that long. */
     public void onRateLimited(Long providerId, Duration retryAfter) {
-        Entry entry = entry(providerId);
-        synchronized (entry) {
-            openUntil(entry, retryAfter == null ? props.getBreaker().getOpenDuration() : retryAfter);
-            alerts.notify("provider.rate_limited", Map.of(
-                    "provider_id", providerId,
-                    "retry_after_seconds", Math.max(0, (entry.openUntilMs - System.currentTimeMillis()) / 1000)));
-        }
+        Duration duration = retryAfter == null ? props.getBreaker().getOpenDuration() : retryAfter;
+        long now = System.currentTimeMillis();
+        long openFor = Math.max(1, duration.toMillis());
+        CircuitBreakerStore.Snapshot current = store.load(providerId);
+        store.open(providerId, current.failures(), now + openFor, openFor + 5_000);
+        alerts.notify("provider.rate_limited", Map.of(
+                "provider_id", providerId,
+                "retry_after_seconds", openFor / 1000));
     }
 
-    private static void openUntil(Entry entry, Duration duration) {
-        entry.state = State.OPEN;
-        entry.openUntilMs = System.currentTimeMillis() + Math.max(1, duration.toMillis());
+    private static State stateOf(CircuitBreakerStore.Snapshot entry) {
+        return State.valueOf(entry.state().name());
+    }
+
+    private static long retryAfterSeconds(CircuitBreakerStore.Snapshot entry, long now) {
+        if (entry.state() != CircuitBreakerStore.State.OPEN) {
+            return 0;
+        }
+        return Math.max(0, (entry.openUntilMs() - now) / 1000);
     }
 }

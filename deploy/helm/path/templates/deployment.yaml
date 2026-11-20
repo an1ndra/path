@@ -61,6 +61,10 @@ spec:
             {{- if .Values.valkey.enabled }}
             - name: GATEWAY_RATE_LIMIT_BACKEND
               value: valkey
+            # Same explicit choice for circuit-breaker and in-flight state; without it a
+            # cluster keeps one copy of each per replica.
+            - name: GATEWAY_SHARED_STATE_BACKEND
+              value: valkey
             - name: VALKEY_HOST
               value: {{ printf "%s-valkey" (include "path.fullname" .) | quote }}
             {{- end }}

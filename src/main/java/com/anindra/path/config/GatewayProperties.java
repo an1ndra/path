@@ -80,6 +80,7 @@ public class GatewayProperties {
     private AdminAuth adminAuth = new AdminAuth();
     private ClientAuth clientAuth = new ClientAuth();
     private ProxyAuth proxyAuth = new ProxyAuth();
+    private SharedState sharedState = new SharedState();
     private Alert alert = new Alert();
     private Digest digest = new Digest();
 
@@ -115,6 +116,19 @@ public class GatewayProperties {
         private Duration openDuration = Duration.ofSeconds(30);
         /** Routes tried per request, including the first. */
         private int maxAttempts = 3;
+        /** How long a HALF_OPEN probe may hold the claim before another replica may try. */
+        private Duration probeLease = Duration.ofSeconds(10);
+    }
+
+    /** Where circuit and concurrency state live: memory (per JVM) or Valkey (shared). */
+    @Getter
+    @Setter
+    public static class SharedState {
+        private String backend = "memory";
+        /** Key namespace, the same convention as the rate limiter. */
+        private String prefix = "path";
+        /** A permit's lease; longer than the slowest request or the cap can be exceeded. */
+        private Duration concurrencyLease = Duration.ofMinutes(5);
     }
 
     @Getter

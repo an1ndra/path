@@ -22,7 +22,8 @@ class ProviderCircuitBreakerTest {
                         new com.fasterxml.jackson.databind.ObjectMapper(),
                         org.mockito.Mockito.mock(com.anindra.path.admin.MailSettingsService.class),
                         new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
-                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                new InMemoryCircuitBreakerStore());
     }
 
     @Test

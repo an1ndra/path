@@ -1,25 +1,33 @@
 package com.anindra.path.gateway;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
 
 /**
  * Caps concurrent in-flight requests per client key.
  *
  * The rate limiter bounds requests per minute; this bounds requests at an instant, which
  * is what stops one key from opening thousands of streams and starving the pool.
+ *
+ * <p>The counting lives in a {@link ConcurrencyStore}: semaphores in this JVM by default,
+ * a leased sorted set in Valkey when {@code gateway.shared-state.backend=valkey}. With the
+ * shared store, a killed pod's permits expire instead of holding a key forever.
  */
 @Component
 public class ConcurrencyLimiter {
 
-    private record Entry(int limit, Semaphore semaphore) {
+    private final ConcurrencyStore store;
+
+    /** Kept so a unit test (or a non-Spring caller) gets the old behaviour. */
+    public ConcurrencyLimiter() {
+        this(new InMemoryConcurrencyStore());
     }
 
-    private final Map<String, Entry> entries = new ConcurrentHashMap<>();
+    @Autowired
+    public ConcurrencyLimiter(ConcurrencyStore store) {
+        this.store = store;
+    }
 
     public static String keyBucket(Long keyId) {
         return "key:" + keyId;
@@ -65,14 +73,7 @@ public class ConcurrencyLimiter {
 
     /** @return true when a permit was taken; callers must release the same bucket. */
     public boolean tryAcquire(String bucket, int limit) {
-        if (limit <= 0) {
-            return true;
-        }
-        Entry entry = entries.compute(bucket, (id, current) ->
-                current == null || current.limit() != limit
-                        ? new Entry(limit, new Semaphore(limit))
-                        : current);
-        return entry.semaphore().tryAcquire();
+        return store.tryAcquire(bucket, limit);
     }
 
     public void release(Long keyId) {
@@ -80,10 +81,7 @@ public class ConcurrencyLimiter {
     }
 
     public void release(String bucket) {
-        Entry entry = entries.get(bucket);
-        if (entry != null && entry.semaphore().availablePermits() < entry.limit()) {
-            entry.semaphore().release();
-        }
+        store.release(bucket);
     }
 
     public int inFlight(Long keyId) {
@@ -91,13 +89,11 @@ public class ConcurrencyLimiter {
     }
 
     public int inFlight(String bucket) {
-        Entry entry = entries.get(bucket);
-        return entry == null ? 0 : entry.limit() - entry.semaphore().availablePermits();
+        return store.inFlight(bucket);
     }
 
     @Scheduled(fixedDelay = 600_000)
     void evictIdle() {
-        entries.entrySet().removeIf(e ->
-                e.getValue().semaphore().availablePermits() == e.getValue().limit());
+        store.evictIdle();
     }
 }

@@ -69,6 +69,14 @@ gateway:
     failure-threshold: ${GATEWAY_BREAKER_FAILURES:5}
     open-duration: ${GATEWAY_BREAKER_OPEN:30s}
     max-attempts: ${GATEWAY_MAX_ATTEMPTS:3}
+    # How long a HALF_OPEN probe holds the claim before another replica may retry.
+    probe-lease: ${GATEWAY_BREAKER_PROBE_LEASE:10s}
+  # Circuit-breaker and in-flight state. "valkey" shares them across replicas; memory is
+  # per JVM and a restart clears it.
+  shared-state:
+    backend: ${GATEWAY_SHARED_STATE_BACKEND:memory}
+    prefix: ${GATEWAY_SHARED_STATE_PREFIX:path}
+    concurrency-lease: ${GATEWAY_CONCURRENCY_LEASE:300s}
   cache:
     semantic-model: ${GATEWAY_SEMANTIC_MODEL:}
     semantic-max-entries: ${GATEWAY_SEMANTIC_MAX_ENTRIES:200}

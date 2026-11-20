@@ -52,6 +52,10 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_ALERT_WEBHOOK` | empty | Slack-compatible webhook for alerts |
 | `GATEWAY_ALERT_COOLDOWN` | `1h` | minimum gap between alerts of the same event |
 | `GATEWAY_ALERT_BUDGET_THRESHOLD` | `0.8` | alert when a key has less than this fraction left |
+| `GATEWAY_SHARED_STATE_BACKEND` | `memory` | `valkey` shares circuit-breaker and in-flight state across replicas |
+| `GATEWAY_SHARED_STATE_PREFIX` | `path` | key prefix for that state, same convention as the rate limiter |
+| `GATEWAY_CONCURRENCY_LEASE` | `300s` | how long a Valkey in-flight permit survives a dead pod; must exceed the slowest request |
+| `GATEWAY_BREAKER_PROBE_LEASE` | `10s` | how long the single HALF_OPEN probe may hold its claim |
 | `GATEWAY_ALERT_ERROR_RATE` | `0.25` | provider EWMA error rate above which `provider.error_rate_high` fires; `0` disables the check |
 | `GATEWAY_ALERT_MIN_SAMPLES` | `20` | samples a provider needs before its error rate is trusted (a cold start is not an incident) |
 | `GATEWAY_SEMANTIC_MODEL` | blank (off) | public model used to embed prompts for the semantic cache |

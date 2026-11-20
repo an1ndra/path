@@ -355,6 +355,7 @@ ids land at `0.00` and are flagged in `description`.
 | GET | `/admin/stats?window=24h&bucket=1h` | the same, plus a bucketed time series |
 | GET | `/admin/usage?window=24h&limit=100&keyId=` | raw usage rows |
 | POST | `/admin/digest/test?date=2026-11-19` | send yesterday's summary now and return its text |
+| GET | `/admin/usage/export?from=2026-01-01&to=2026-02-01` | CSV for an explicit date slice (archive before a purge) |
 
 ```json
 {

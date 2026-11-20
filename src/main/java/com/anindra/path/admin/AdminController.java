@@ -358,16 +358,41 @@ public class AdminController {
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) String endUser,
             @RequestParam(defaultValue = "30d") String window,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
             @RequestParam(defaultValue = "10000") int limit) {
         java.time.Duration parsed = com.anindra.path.api.Durations.cap(
                 com.anindra.path.api.Durations.parse(window, java.time.Duration.ofDays(30)),
                 java.time.Duration.ofDays(365));
-        java.time.Instant to = java.time.Instant.now();
-        java.time.Instant from = to.minus(parsed);
-        String csv = reporting.usageCsv(keyId, projectId, endUser, from, to, limit);
+        // from/to make the slice explicit, which is what an archive before a retention purge
+        // needs; window alone always ends at "now".
+        java.time.Instant toInstant = to == null || to.isBlank()
+                ? java.time.Instant.now() : instant(to, "to");
+        java.time.Instant fromInstant = from == null || from.isBlank()
+                ? toInstant.minus(parsed) : instant(from, "from");
+        if (fromInstant.isAfter(toInstant)) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "'from' must be before 'to'.", "from");
+        }
+        String csv = reporting.usageCsv(keyId, projectId, endUser, fromInstant, toInstant, limit);
         return org.springframework.http.ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=\"usage-" + to + ".csv\"")
+                .header("Content-Disposition", "attachment; filename=\"usage-" + toInstant + ".csv\"")
                 .body(csv);
+    }
+
+    /** ISO-8601 instant, or a plain date taken as UTC midnight. */
+    private static java.time.Instant instant(String value, String param) {
+        try {
+            return java.time.Instant.parse(value.trim());
+        } catch (java.time.format.DateTimeParseException ignored) {
+            try {
+                return java.time.LocalDate.parse(value.trim())
+                        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+            } catch (java.time.format.DateTimeParseException e) {
+                throw com.anindra.path.api.ApiException.badRequest(
+                        "'" + param + "' must be an ISO-8601 instant or date, e.g. 2026-11-19.", param);
+            }
+        }
     }
 
     @GetMapping("/audit")

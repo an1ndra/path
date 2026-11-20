@@ -139,6 +139,61 @@ digest is written to the workflow summary so it can be pinned.
 - **OpenAPI** — springdoc publishes `/v3/api-docs`; CI uploads the generated spec as a
   build artifact so drift is visible.
 
+## Retention, archiving and partitioning
+
+`GATEWAY_USAGE_RETENTION` (default `180d`, `0` keeps everything) drives a nightly purge at
+03:30 that deletes rows older than the window. It runs whether or not you archive, so an
+archive for finance has to be taken before the cutoff passes.
+
+**Archiving.** The CSV export takes an explicit slice, which is the only safe way to
+capture the rows a purge is about to remove:
+
+```bash
+# one month at a time, oldest first
+curl -s 'localhost:8080/admin/usage/export?from=2026-01-01&to=2026-02-01&limit=50000' \
+  -H "$A" -o usage-2026-01.csv
+```
+
+`from` and `to` accept an ISO-8601 instant or a plain date (UTC midnight); `window` still
+works and ignores them when they are absent. The export is row-per-request, so raise
+`limit` (max 50,000) or split the month if a slice overflows.
+
+**Partitioning (PostgreSQL, opt-in).** [`deploy/postgres/partitions.sql`](../deploy/postgres/partitions.sql)
+converts `usage_records` to monthly range partitions: rename, recreate the parent with the
+same columns and identity, create one partition per month from the oldest row through three
+months ahead, move the rows, restore the indexes and a primary key that includes
+`created_at`, and leave a DEFAULT partition for anything outside the prepared months.
+
+It is **not** a Flyway migration because it rewrites the table. Run it on purpose, with the
+gateway stopped, after a `pg_dump`:
+
+```bash
+pg_dump "$DB_URL" -Fc -f path-before-partitions.dump
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f deploy/postgres/partitions.sql
+```
+
+Afterwards, keep the calendar ahead of the data. Either schedule the provided function in
+pg_cron:
+
+```sql
+select cron.schedule('path-usage-partitions', '0 3 1 * *',
+  $$select path_ensure_usage_partitions(
+      date_trunc('month', now())::date,
+      (date_trunc('month', now()) + interval '3 months')::date)$$);
+```
+
+or call `select path_ensure_usage_partitions(...)` from your own job. Once a month has been
+archived, detaching and dropping it is cheaper than the row-by-row retention delete:
+
+```sql
+alter table usage_records detach partition usage_records_2025_01;
+drop table usage_records_2025_01;
+```
+
+The application is unchanged by the conversion: columns, identity and indexes stay the
+same, so Hibernate's `ddl-auto=validate` still passes. Partitioning is what keeps
+`/admin/stats` and `/admin/usage` fast once the history is older than a few months.
+
 ## Schema migrations
 
 Flyway owns the schema; Hibernate runs with `ddl-auto: validate` and fails fast when an

@@ -60,6 +60,7 @@ public class AlertService {
     private final Map<String, Long> sentOnce = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor webhookExecutor;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AlertService(GatewayProperties props, ObjectMapper mapper,
                         MailSettingsService mailSettings, MeterRegistry metrics) {
         this(props, mapper, mailSettings, metrics, WORKERS, QUEUE_CAPACITY);

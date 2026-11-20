@@ -78,6 +78,10 @@ public class UsageRecord {
     @Column(precision = 18, scale = 8)
     private BigDecimal cachedSavingsUsd = BigDecimal.ZERO;
 
+    /** Cache tier that served the call: "exact" or "semantic"; null when it was not a hit. */
+    @Column(length = 16)
+    private String cacheTier;
+
     @Column(precision = 18, scale = 8)
     private BigDecimal costUsd = BigDecimal.ZERO;
 

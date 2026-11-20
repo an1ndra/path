@@ -65,6 +65,7 @@ public class AdminReportingService {
             row.put("total_tokens", r.getTotalTokens());
             row.put("cached_input_tokens", r.getCachedInputTokens());
             row.put("cache_write_tokens", r.getCacheWriteTokens());
+            row.put("cache_tier", r.getCacheTier());
             row.put("reasoning_tokens", r.getReasoningTokens());
             row.put("cost_usd", r.getCostUsd());
             row.put("cost_breakdown", Map.of(
@@ -319,6 +320,8 @@ public class AdminReportingService {
                         .divide(java.math.BigDecimal.valueOf(promptTokens), 4,
                                 java.math.RoundingMode.HALF_UP).doubleValue());
         cache.put("savings_usd", savings);
+        cache.put("semantic_hits", rows.stream()
+                .filter(r -> "semantic".equals(r.getCacheTier())).count());
         out.put("cache", cache);
         out.put("fallback_requests", rows.stream().filter(r -> r.getAttempts() > 1).count());
         out.put("estimated_usage_requests", rows.stream().filter(UsageRecord::isUsageEstimated).count());

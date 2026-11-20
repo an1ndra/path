@@ -125,7 +125,8 @@ digest is written to the workflow summary so it can be pinned.
   OUT_OF_SERVICE.
 - **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,
   streamed), `path_latency_seconds`, `path_tokens_total` (prompt/completion/cached),
-  `path_cost_usd_total`, `path_cache_hits_total`, `path_fallbacks_total`,
+  `path_cost_usd_total`, `path_cache_hits_total` (model, tier exact/semantic),
+  `path_fallbacks_total`,
   `path_provider_circuit_open` (provider_id; 1 while the breaker is open),
   `path_errors_total` (provider, class 4xx/5xx/other, gateway error code) and
   `path_alerts_sent_total` (channel, outcome).

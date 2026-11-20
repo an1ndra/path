@@ -80,7 +80,7 @@ public class ChatService {
             var hit = cache.lookup(cacheKey);
             if (hit.isPresent()) {
                 ResponseCacheService.Entry entry = hit.get();
-                usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                usage.recordCacheHit(key, spec, chain.get(0), entry, false, "exact");
                 try {
                     return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
                             chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,
@@ -98,7 +98,7 @@ public class ChatService {
                 var near = semantic.lookup(key.getId(), spec.publicModel(), promptVector, threshold);
                 if (near.isPresent()) {
                     ResponseCacheService.Entry entry = entryOf(near.get().entry());
-                    usage.recordCacheHit(key, spec, chain.get(0), entry, false);
+                    usage.recordCacheHit(key, spec, chain.get(0), entry, false, "semantic");
                     try {
                         return new Result(mapper.readTree(entry.body()), entry.providerSlug(),
                                 chain.get(0).route().getUpstreamModelId(), BigDecimal.ZERO,

@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Second cache tier: a near-duplicate prompt may reuse a stored completion.
@@ -42,15 +41,10 @@ public class SemanticCacheService {
     private final EmbeddingsService embeddings;
     private final GatewayProperties props;
     private final ObjectMapper mapper;
-    private final LongAdder hits = new LongAdder();
 
     public boolean enabled() {
         String model = props.getCache().getSemanticModel();
         return model != null && !model.isBlank();
-    }
-
-    public long hitCount() {
-        return hits.sum();
     }
 
     /**
@@ -115,7 +109,6 @@ public class SemanticCacheService {
         if (bestEntry == null) {
             return Optional.empty();
         }
-        hits.increment();
         return Optional.of(new Hit(bestEntry, best));
     }
 

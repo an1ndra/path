@@ -97,7 +97,7 @@ public class StreamService {
                 OutputStream cached = response.getOutputStream();
                 cached.write(hit.get().body().getBytes(StandardCharsets.UTF_8));
                 cached.flush();
-                usage.recordCacheHit(key, spec, chain.get(0), hit.get(), true);
+                usage.recordCacheHit(key, spec, chain.get(0), hit.get(), true, "exact");
                 return true;
             }
         }

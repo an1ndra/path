@@ -362,7 +362,7 @@ ids land at `0.00` and are flagged in `description`.
   "ttft_ms": {"p50": 1, "p95": 5},
   "tokens_per_second": {"p50": 7000.0},
   "cache": {"prompt_tokens": 246, "cached_input_tokens": 84,
-            "hit_ratio": 0.3415, "savings_usd": 0.00002061},
+            "hit_ratio": 0.3415, "savings_usd": 0.00002061, "semantic_hits": 3},
   "fallback_requests": 3,
   "estimated_usage_requests": 0,
   "by_provider": {"openai": {"requests": 12, "cost_usd": 0.0002}},
@@ -404,6 +404,7 @@ Each usage row records:
 | `input_cost_usd`, `cached_input_cost_usd`, `cache_write_cost_usd`, `output_cost_usd` | itemised |
 | `cost_usd` | total, 8 decimals |
 | `cached_savings_usd` | what cached tokens would have cost at the input rate |
+| `cache_tier` | `exact` or `semantic` when a cache served the call, null otherwise; how `/admin/stats` counts semantic hits |
 | `ttft_ms` | time to first streamed token |
 | `tokens_per_second` | generation throughput (post-TTFT window) |
 | `upstream_request_id` | provider request id, for support |

@@ -25,7 +25,6 @@ public class AdminController {
     private final AlertService alerts;
     private final MailSettingsService mailSettingsService;
     private final com.anindra.path.config.GatewayProperties props;
-    private final com.anindra.path.gateway.SemanticCacheService semantic;
 
     // ------------------------------------------------------------- providers
 
@@ -302,14 +301,7 @@ public class AdminController {
     public Map<String, Object> stats(@RequestParam(defaultValue = "24h") String window,
                                      @RequestParam(required = false) Long projectId,
                                      @RequestParam(required = false) String bucket) {
-        Map<String, Object> out = reporting.stats(window, projectId, bucket);
-        Object cache = out.get("cache");
-        if (cache instanceof Map<?, ?> existing) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> typed = (Map<String, Object>) existing;
-            typed.put("semantic_hits", semantic.hitCount());
-        }
-        return out;
+        return reporting.stats(window, projectId, bucket);
     }
 
     @GetMapping("/usage")

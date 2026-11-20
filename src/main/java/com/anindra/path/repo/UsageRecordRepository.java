@@ -25,6 +25,11 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     long countByCreatedAtAfter(Instant from);
 
+    long countByCreatedAtAfterAndCacheTier(Instant from, String cacheTier);
+
+    long countByClientKeyIdInAndCreatedAtAfterAndCacheTier(
+            java.util.Collection<Long> keyIds, Instant from, String cacheTier);
+
     long deleteByCreatedAtBefore(Instant cutoff);
 
     long countByClientKeyIdAndCreatedAtAfter(Long clientKeyId, Instant from);

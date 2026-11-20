@@ -136,7 +136,7 @@ public class UsageService {
     /** Records a cache hit: no upstream call, no charge, savings carried for reporting. */
     @Transactional
     public void recordCacheHit(ClientKey key, ChatRequestSpec spec, RouteResolver.ResolvedRoute resolved,
-                               ResponseCacheService.Entry entry, boolean streamed) {
+                               ResponseCacheService.Entry entry, boolean streamed, String tier) {
         UsageRecord record = new UsageRecord();
         record.setClientKeyId(key.getId());
         record.setClientKeyName(key.getName());
@@ -153,10 +153,12 @@ public class UsageService {
         record.setStreamed(streamed);
         record.setAttempts(0);
         record.setFinishReason("cache");
+        record.setCacheTier(tier);
         record.setStatus(UsageRecord.Status.SUCCESS);
         usage.save(record);
         metrics.counter("path.cache.hits",
-                "model", String.valueOf(record.getPublicModelId())).increment();
+                "model", String.valueOf(record.getPublicModelId()),
+                "tier", tier == null ? "unknown" : tier).increment();
         recordMetrics(record);
     }
 
@@ -402,6 +404,7 @@ public class UsageService {
         cache.put("cached_input_tokens", cachedTokens);
         cache.put("hit_ratio", ratio(cachedTokens, promptTokens));
         cache.put("savings_usd", savings);
+        cache.put("semantic_hits", usage.countByCreatedAtAfterAndCacheTier(from, "semantic"));
         out.put("cache", cache);
 
         out.put("fallback_requests", usage.countByAttemptsGreaterThanAndCreatedAtAfter(1, from));

@@ -195,6 +195,11 @@ public class UsageService {
         metrics.counter("path.tokens", "type", "prompt").increment(record.getPromptTokens());
         metrics.counter("path.tokens", "type", "completion").increment(record.getCompletionTokens());
         metrics.counter("path.tokens", "type", "cached").increment(record.getCachedInputTokens());
+        if (record.getAttempts() > 1) {
+            // A request served after at least one failed route: the fallback-rate rule in
+            // deploy/prometheus/path-rules.yml divides this by path_requests_total.
+            metrics.counter("path.fallbacks", "provider", provider).increment();
+        }
         if (record.getCostUsd() != null) {
             metrics.counter("path.cost.usd",
                     "model", model, "provider", provider).increment(record.getCostUsd().doubleValue());

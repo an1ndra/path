@@ -50,6 +50,12 @@ jobs:
         with:
           version: v3.16.3
 
+      - name: Prometheus rules are valid
+        run: |
+          docker run --rm -v "$PWD/deploy/prometheus:/rules:ro" \
+            --entrypoint /bin/promtool prom/prometheus:v3.1.0 \
+            check rules /rules/path-rules.yml
+
       - name: Lint
         run: helm lint deploy/helm/path --set existingSecret=path-credentials
 
@@ -58,7 +64,8 @@ jobs:
           helm template path deploy/helm/path --set existingSecret=x > /dev/null
           helm template path deploy/helm/path --set existingSecret=x \
             --set autoscaling.enabled=true --set postgres.enabled=true \
-            --set valkey.enabled=true --set serviceMonitor.enabled=true > /dev/null
+            --set valkey.enabled=true --set serviceMonitor.enabled=true \
+            --set prometheusRule.enabled=true > /dev/null
 
       - name: No credentials are rendered inline
         run: |

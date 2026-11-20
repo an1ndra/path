@@ -1,0 +1,90 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "path.fullname" . }}
+  labels:
+    {{- include "path.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: path-recording
+      interval: 30s
+      rules:
+        - record: path:cache_hit_ratio:rate30m
+          expr: |
+            sum(rate(path_cache_hits_total[30m]))
+            /
+            clamp_min(sum(rate(path_requests_total[30m])), 0.0001)
+    - name: path-alerts
+      rules:
+        - alert: PathHighFallbackRate
+          expr: |
+            sum(rate(path_fallbacks_total[5m]))
+            /
+            clamp_min(sum(rate(path_requests_total[5m])), 0.0001)
+            > 0.20
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "More than 20% of requests are falling back to another route"
+            description: >-
+              A route is failing and every request is being retried on its fallback. Spend
+              and latency are rising even though requests still succeed.
+            runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
+        - alert: PathCacheHitRatioLow
+          expr: |
+            path:cache_hit_ratio:rate30m
+            < 0.5 * avg_over_time(path:cache_hit_ratio:rate30m[7d])
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The response-cache hit ratio is below half its 7-day average"
+            description: >-
+              Cache hits collapsed against their own baseline: a changed prompt prefix, a
+              disabled cache_enabled route or a new client with temperature > 0.
+            runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
+        - alert: PathSpendRateHigh
+          expr: |
+            sum(increase(path_cost_usd_total[1h])) * 24
+            >
+            2 * sum(increase(path_cost_usd_total[1d] offset 1d))
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The current spend rate is on track to exceed twice yesterday"
+            description: >-
+              The last hour, extrapolated to a day, is more than double the whole of the
+              previous day.
+            runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
+        - alert: PathErrorRateHigh
+          expr: |
+            sum(rate(path_requests_total{status="error"}[5m]))
+            /
+            clamp_min(sum(rate(path_requests_total[5m])), 0.0001)
+            > 0.02
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "More than 2% of requests are failing"
+            description: >-
+              Fallback is exhausted or unavailable; usage rows carry error_code and
+              error_message for the failing calls.
+            runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
+        - alert: PathProviderParked
+          expr: min_over_time(path_provider_circuit_open[15m]) == 1
+          labels:
+            severity: critical
+          annotations:
+            summary: "Provider {{ `{{ $labels.provider_id }}` }} has had its circuit open for 15 minutes"
+            description: >-
+              The breaker has been open continuously, so every route on this provider is
+              being skipped.
+            runbook: {{ .Values.prometheusRule.runbookBase | default "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts" | quote }}
+{{- end }}

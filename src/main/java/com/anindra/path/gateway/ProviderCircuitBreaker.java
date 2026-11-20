@@ -1,6 +1,7 @@
 package com.anindra.path.gateway;
 
 import com.anindra.path.config.GatewayProperties;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -30,8 +31,26 @@ public class ProviderCircuitBreaker {
     }
 
     private final Map<Long, Entry> entries = new ConcurrentHashMap<>();
+    /** Providers whose gauge has been registered; one gauge per provider, updated on scrape. */
+    private final java.util.Set<Long> gauged = ConcurrentHashMap.newKeySet();
     private final GatewayProperties props;
     private final com.anindra.path.admin.AlertService alerts;
+    private final MeterRegistry metrics;
+
+    /**
+     * One stable entry per provider. The Prometheus gauge reads the entry's state on scrape,
+     * so it stays correct without a callback on every transition.
+     */
+    private Entry entry(Long providerId) {
+        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+        if (gauged.add(providerId)) {
+            metrics.gauge("path.provider.circuit.open",
+                    java.util.List.of(io.micrometer.core.instrument.Tag.of(
+                            "provider_id", String.valueOf(providerId))),
+                    entry, e -> e.state == State.OPEN ? 1.0 : 0.0);
+        }
+        return entry;
+    }
 
     /** Read-only projection used by the admin API. */
     public Map<String, Object> snapshot() {
@@ -58,7 +77,7 @@ public class ProviderCircuitBreaker {
 
     /** True when a request may be sent to this provider right now. */
     public boolean isAvailable(Long providerId) {
-        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+        Entry entry = entry(providerId);
         synchronized (entry) {
             if (entry.state != State.OPEN) {
                 return true;
@@ -72,7 +91,7 @@ public class ProviderCircuitBreaker {
     }
 
     public void onSuccess(Long providerId) {
-        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+        Entry entry = entry(providerId);
         synchronized (entry) {
             entry.state = State.CLOSED;
             entry.failures = 0;
@@ -81,7 +100,7 @@ public class ProviderCircuitBreaker {
     }
 
     public void onFailure(Long providerId) {
-        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+        Entry entry = entry(providerId);
         synchronized (entry) {
             entry.failures++;
             if (entry.state == State.HALF_OPEN
@@ -97,7 +116,7 @@ public class ProviderCircuitBreaker {
 
     /** Upstream asked us to back off; park the provider for exactly that long. */
     public void onRateLimited(Long providerId, Duration retryAfter) {
-        Entry entry = entries.computeIfAbsent(providerId, k -> new Entry());
+        Entry entry = entry(providerId);
         synchronized (entry) {
             openUntil(entry, retryAfter == null ? props.getBreaker().getOpenDuration() : retryAfter);
             alerts.notify("provider.rate_limited", Map.of(

@@ -115,3 +115,11 @@ serviceMonitor:
   enabled: false
   interval: 30s
   labels: {}
+
+# Prometheus Operator PrometheusRule with the recording and alerting rules from
+# deploy/prometheus/path-rules.yml. Off by default: it needs the operator CRDs.
+prometheusRule:
+  enabled: false
+  labels: {}
+  # Annotations point here; change it when you fork or mirror the repository.
+  runbookBase: "https://github.com/an1ndra/path/blob/Develop/docs/OPERATIONS.md#alerts"

@@ -99,8 +99,16 @@ digest is written to the workflow summary so it can be pinned.
 
 - **Email alerts.** Set `SPRING_MAIL_*` and `GATEWAY_ALERT_EMAIL_TO` and every alert also
   arrives by email (`[Path] <event>` with the payload as `key: value` lines). Webhook and
-  email are independent channels: either, both, or neither. Sending is fire-and-forget on a
+  email are independent channels: either, both, or neither. Email is fire-and-forget on a
   virtual thread, and a mailbox failure only logs a warning.
+- **Webhook delivery is retried.** A 429, a 5xx, a connect failure or a timeout is retried
+  up to three times with exponential backoff (250ms, 1s, 4s) and jitter, honouring
+  `Retry-After` when the endpoint sends one (capped at 30s so one endpoint cannot pin a
+  worker). A 4xx is never retried: it is a permanent rejection. `path_alerts_sent_total`
+  (tagged `outcome` = `delivered`, `retried`, `dropped`) makes the failure rate visible.
+- **A dead webhook cannot grow without bound.** Sends run on two workers with a 64-entry
+  queue. When the queue is full the alert is dropped and counted as `outcome="dropped"`
+  instead of blocking the request that raised it.
 - **Mail settings are editable from the console** (`GET/PUT /admin/mail-settings`): host,
   port, username, password, from and recipients. They win over `SPRING_MAIL_*`, which stays
   as the config-file route; `source` in the response says which is in force. The password is
@@ -113,7 +121,8 @@ digest is written to the workflow summary so it can be pinned.
   OUT_OF_SERVICE.
 - **Metrics** at `/actuator/prometheus`: `path_requests_total` (model, provider, status,
   streamed), `path_latency_seconds`, `path_tokens_total` (prompt/completion/cached),
-  `path_cost_usd_total`, `path_cache_hits_total`.
+  `path_cost_usd_total`, `path_cache_hits_total`, `path_fallbacks_total` and
+  `path_alerts_sent_total` (outcome).
 - **Traces** via Micrometer + OpenTelemetry. Off by default (`GATEWAY_TRACE_SAMPLE=0`);
   set a sampling probability and `OTEL_EXPORTER_OTLP_ENDPOINT` to export.
 - **Correlation** — every response carries `X-Request-Id`, echoed into the MDC and into
@@ -157,9 +166,14 @@ Preview the notes locally with `python3 tools/changelog.py vX.Y.Z`.
 ## Alerts
 
 Set `GATEWAY_ALERT_WEBHOOK` to a Slack-compatible URL to receive
-`provider.circuit_open`, `provider.rate_limited` and `key.budget_low`, at most once per
-event per cooldown. Payloads are JSON with `source`, `event`, `at` and event-specific
-fields.
+`provider.circuit_open`, `provider.rate_limited`, `key.budget_low`, `project.budget_low`,
+`project.budget_exhausted`, `provider.error_rate_high`, `provider.error_rate_normal` and
+`alert.test`, at most once per event per cooldown. Payloads are JSON with `source`,
+`event`, `at` and event-specific fields.
+
+Webhook sends are retried (429/5xx/connect/timeout, three attempts, exponential backoff)
+and bounded by a small queue; see "Observability" for the exact behaviour and the
+`path_alerts_sent_total` counter. Losing an alert is therefore visible, not silent.
 
 ## Audit
 

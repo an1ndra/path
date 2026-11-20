@@ -23,7 +23,8 @@ class AlertEmailTest {
     private final JavaMailSender sender = mock(JavaMailSender.class);
     private final MailSettingsService mail = mock(MailSettingsService.class);
     private final AlertService alerts =
-            new AlertService(new GatewayProperties(), new ObjectMapper(), mail);
+            new AlertService(new GatewayProperties(), new ObjectMapper(), mail,
+                    new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private void configure(String recipients) {
         when(mail.recipients()).thenReturn(recipients);

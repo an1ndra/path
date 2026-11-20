@@ -33,9 +33,11 @@ import java.util.concurrent.TimeUnit;
  * blip. Only 429, 5xx and connect/timeout failures are retried; a 4xx is a permanent
  * rejection and retrying it would just repeat the same mistake.
  *
- * <p>Sends run on a small bounded executor. If the webhook is down and the queue fills, new
- * alerts are dropped (and counted) rather than piling up behind a dead endpoint. A blank
- * webhook URL makes the webhook channel a no-op; email is independent.
+ * <p>Both channels run on small bounded executors. If an endpoint is down and the queue
+ * fills, new alerts are dropped (and counted) rather than piling up behind a dead endpoint.
+ * A blank webhook URL makes the webhook channel a no-op; email is independent. Email is not
+ * retried: a real SMTP server has its own queue, and a retry here could duplicate a message
+ * it already accepted.
  */
 @Service
 @Slf4j
@@ -59,6 +61,7 @@ public class AlertService {
     private final Map<String, Long> lastSent = new ConcurrentHashMap<>();
     private final Map<String, Long> sentOnce = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor webhookExecutor;
+    private final ThreadPoolExecutor emailExecutor;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AlertService(GatewayProperties props, ObjectMapper mapper,
@@ -81,10 +84,22 @@ public class AlertService {
                     return thread;
                 },
                 (runnable, executor) -> {
-                    count("dropped");
+                    count("webhook", "dropped");
                     log.warn("Alert webhook queue is full; dropping an alert instead of blocking the caller");
                 });
         this.webhookExecutor.allowCoreThreadTimeOut(true);
+        this.emailExecutor = new ThreadPoolExecutor(workers, workers, 30, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(Math.max(1, queueCapacity)),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "alert-email");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                (runnable, executor) -> {
+                    count("email", "dropped");
+                    log.warn("Alert email queue is full; dropping an alert instead of blocking the caller");
+                });
+        this.emailExecutor.allowCoreThreadTimeOut(true);
     }
 
     /**
@@ -135,7 +150,7 @@ public class AlertService {
             enqueueWebhook(url, body);
         }
         if (wantsEmail) {
-            Thread.ofVirtual().name("alert-email").start(() -> email(body));
+            enqueueEmail(body);
         }
     }
 
@@ -155,14 +170,24 @@ public class AlertService {
         } catch (java.util.concurrent.RejectedExecutionException e) {
             // The handler above counts the drop, but it is not reached while the pool is
             // shutting down (for example during a drain).
-            count("dropped");
+            count("webhook", "dropped");
             log.warn("Alert webhook executor rejected {} while shutting down", body.get("event"));
+        }
+    }
+
+    private void enqueueEmail(Map<String, Object> body) {
+        try {
+            emailExecutor.execute(() -> email(body));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            count("email", "dropped");
+            log.warn("Alert email executor rejected {} while shutting down", body.get("event"));
         }
     }
 
     private void email(Map<String, Object> body) {
         JavaMailSender sender = mailSettings.sender().orElse(null);
         if (sender == null) {
+            count("email", "dropped");
             return;
         }
         try {
@@ -172,8 +197,10 @@ public class AlertService {
             message.setSubject("[Path] " + body.get("event"));
             message.setText(text(body));
             sender.send(message);
+            count("email", "delivered");
         } catch (Exception e) {
             // An unreachable mailbox must never affect the request that triggered the alert.
+            count("email", "dropped");
             log.warn("Alert email failed for {}: {}", body.get("event"), e.getMessage());
         }
     }
@@ -206,7 +233,7 @@ public class AlertService {
             json = mapper.writeValueAsString(body);
             uri = URI.create(url);
         } catch (Exception e) {
-            count("dropped");
+            count("webhook", "dropped");
             log.warn("Alert webhook payload is not serializable for {}: {}", body.get("event"), e.getMessage());
             return;
         }
@@ -222,18 +249,18 @@ public class AlertService {
                 HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
                 int status = response.statusCode();
                 if (status >= 200 && status < 300) {
-                    count("delivered");
+                    count("webhook", "delivered");
                     return;
                 }
                 if (!retryable(status)) {
-                    count("dropped");
+                    count("webhook", "dropped");
                     log.warn("Alert webhook rejected {} with {}; not retrying a permanent failure",
                             body.get("event"), status);
                     return;
                 }
                 retryAfterMs = retryAfterMs(response);
                 if (attempt == MAX_ATTEMPTS) {
-                    count("dropped");
+                    count("webhook", "dropped");
                     log.warn("Alert webhook failed for {} after {} attempts (last status {})",
                             body.get("event"), attempt, status);
                     return;
@@ -243,7 +270,7 @@ public class AlertService {
             } catch (IOException e) {
                 // Connect failures, timeouts and a dropped connection are all transient.
                 if (attempt == MAX_ATTEMPTS) {
-                    count("dropped");
+                    count("webhook", "dropped");
                     log.warn("Alert webhook failed for {} after {} attempts: {}",
                             body.get("event"), attempt, e.getMessage());
                     return;
@@ -252,27 +279,27 @@ public class AlertService {
                         body.get("event"), e.getMessage(), attempt + 1, MAX_ATTEMPTS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                count("dropped");
+                count("webhook", "dropped");
                 log.warn("Alert webhook for {} was interrupted", body.get("event"));
                 return;
             } catch (Exception e) {
-                count("dropped");
+                count("webhook", "dropped");
                 log.warn("Alert webhook failed for {}: {}", body.get("event"), e.getMessage());
                 return;
             }
 
-            count("retried");
+            count("webhook", "retried");
             long delay = retryAfterMs >= 0 ? Math.min(retryAfterMs, MAX_RETRY_AFTER_MS)
                     : jittered(attempt);
             try {
                 Thread.sleep(delay);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                count("dropped");
+                count("webhook", "dropped");
                 return;
             }
         }
-        count("dropped");
+        count("webhook", "dropped");
     }
 
     /** Only rate limits and server-side failures are worth another attempt. */
@@ -306,7 +333,7 @@ public class AlertService {
         }
     }
 
-    private void count(String outcome) {
-        metrics.counter("path.alerts.sent", "outcome", outcome).increment();
+    private void count(String channel, String outcome) {
+        metrics.counter("path.alerts.sent", "channel", channel, "outcome", outcome).increment();
     }
 }

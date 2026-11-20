@@ -104,11 +104,15 @@ digest is written to the workflow summary so it can be pinned.
 - **Webhook delivery is retried.** A 429, a 5xx, a connect failure or a timeout is retried
   up to three times with exponential backoff (250ms, 1s, 4s) and jitter, honouring
   `Retry-After` when the endpoint sends one (capped at 30s so one endpoint cannot pin a
-  worker). A 4xx is never retried: it is a permanent rejection. `path_alerts_sent_total`
-  (tagged `outcome` = `delivered`, `retried`, `dropped`) makes the failure rate visible.
-- **A dead webhook cannot grow without bound.** Sends run on two workers with a 64-entry
-  queue. When the queue is full the alert is dropped and counted as `outcome="dropped"`
-  instead of blocking the request that raised it.
+  worker). A 4xx is never retried: it is a permanent rejection.
+  `path_alerts_sent_total{channel="webhook",outcome}` (tagged `delivered`, `retried`,
+  `dropped`) makes the failure rate visible.
+- **A dead channel cannot grow without bound.** Both webhook and email run on two workers
+  with a 64-entry queue. When a queue is full the alert is dropped and counted as
+  `outcome="dropped"` on that channel instead of blocking the request that raised it.
+  Email is not retried: a real SMTP server has its own queue, and a retry here could
+  duplicate a message it already accepted. `channel="email"` carries `delivered` and
+  `dropped` only.
 - **Mail settings are editable from the console** (`GET/PUT /admin/mail-settings`): host,
   port, username, password, from and recipients. They win over `SPRING_MAIL_*`, which stays
   as the config-file route; `source` in the response says which is in force. The password is
@@ -124,7 +128,7 @@ digest is written to the workflow summary so it can be pinned.
   `path_cost_usd_total`, `path_cache_hits_total`, `path_fallbacks_total`,
   `path_provider_circuit_open` (provider_id; 1 while the breaker is open),
   `path_errors_total` (provider, class 4xx/5xx/other, gateway error code) and
-  `path_alerts_sent_total` (outcome).
+  `path_alerts_sent_total` (channel, outcome).
 - **Traces** via Micrometer + OpenTelemetry. Off by default (`GATEWAY_TRACE_SAMPLE=0`);
   set a sampling probability and `OTEL_EXPORTER_OTLP_ENDPOINT` to export.
 - **Correlation** — every response carries `X-Request-Id`, echoed into the MDC and into
@@ -174,8 +178,9 @@ Set `GATEWAY_ALERT_WEBHOOK` to a Slack-compatible URL to receive
 `event`, `at` and event-specific fields.
 
 Webhook sends are retried (429/5xx/connect/timeout, three attempts, exponential backoff)
-and bounded by a small queue; see "Observability" for the exact behaviour and the
-`path_alerts_sent_total` counter. Losing an alert is therefore visible, not silent.
+and both channels are bounded by a small queue; see "Observability" for the exact
+behaviour and the `path_alerts_sent_total` counter. Losing an alert is therefore visible,
+not silent. Email is not retried, deliberately.
 
 **Provider error rate.** The circuit breaker reacts to consecutive failures, so a provider
 failing 30% of calls with an occasional success is never parked and requests are quietly

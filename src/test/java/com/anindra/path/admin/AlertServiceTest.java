@@ -164,8 +164,66 @@ class AlertServiceTest {
         assertThat(awaitDeliveries(1)).isGreaterThanOrEqualTo(1);
     }
 
+    @Test
+    void aSlowMailboxCannotGrowTheEmailQueueWithoutBound() throws Exception {
+        props.getAlerts().setWebhookUrl("");
+        MailSettingsService mail = org.mockito.Mockito.mock(MailSettingsService.class);
+        org.springframework.mail.javamail.JavaMailSender sender =
+                org.mockito.Mockito.mock(org.springframework.mail.javamail.JavaMailSender.class);
+        org.mockito.Mockito.when(mail.emailEnabled()).thenReturn(true);
+        org.mockito.Mockito.when(mail.sender()).thenReturn(java.util.Optional.of(sender));
+        org.mockito.Mockito.when(mail.recipients()).thenReturn("ops@example.com");
+        org.mockito.Mockito.when(mail.fromAddress()).thenReturn("path@example.com");
+        CountDownLatch release = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            release.await(2, TimeUnit.SECONDS);
+            return null;
+        }).when(sender).send(org.mockito.ArgumentMatchers.any(org.springframework.mail.SimpleMailMessage.class));
+        alerts = new AlertService(props, new ObjectMapper(), mail, metrics, 1, 1);
+
+        for (int i = 0; i < 5; i++) {
+            alerts.notify("email.event." + i, Map.of("i", i));
+        }
+        release.countDown();
+
+        assertThat(metrics.counter("path.alerts.sent", "channel", "email",
+                "outcome", "dropped").count()).isGreaterThanOrEqualTo(2.0);
+        assertThat(awaitEmailDelivered(1)).isGreaterThanOrEqualTo(1.0);
+    }
+
+    @Test
+    void aDeliveredEmailIsCountedOnItsOwnChannel() throws Exception {
+        props.getAlerts().setWebhookUrl("");
+        MailSettingsService mail = org.mockito.Mockito.mock(MailSettingsService.class);
+        org.springframework.mail.javamail.JavaMailSender sender =
+                org.mockito.Mockito.mock(org.springframework.mail.javamail.JavaMailSender.class);
+        org.mockito.Mockito.when(mail.emailEnabled()).thenReturn(true);
+        org.mockito.Mockito.when(mail.sender()).thenReturn(java.util.Optional.of(sender));
+        org.mockito.Mockito.when(mail.recipients()).thenReturn("ops@example.com");
+        org.mockito.Mockito.when(mail.fromAddress()).thenReturn("path@example.com");
+        alerts = new AlertService(props, new ObjectMapper(), mail, metrics);
+
+        alerts.notify("key.budget_low", Map.of("key_id", 1));
+
+        assertThat(awaitEmailDelivered(1)).isEqualTo(1.0);
+        assertThat(metrics.counter("path.alerts.sent", "channel", "email",
+                "outcome", "delivered").count()).isEqualTo(1.0);
+    }
+
+    private double awaitEmailDelivered(double expected) throws InterruptedException {
+        for (int i = 0; i < 60; i++) {
+            double value = metrics.counter("path.alerts.sent", "channel", "email",
+                    "outcome", "delivered").count();
+            if (value >= expected) {
+                return value;
+            }
+            Thread.sleep(50);
+        }
+        return metrics.counter("path.alerts.sent", "channel", "email", "outcome", "delivered").count();
+    }
+
     private double counter(String outcome) {
-        return metrics.counter("path.alerts.sent", "outcome", outcome).count();
+        return metrics.counter("path.alerts.sent", "channel", "webhook", "outcome", outcome).count();
     }
 
     private int awaitDeliveries(int expected) throws InterruptedException {

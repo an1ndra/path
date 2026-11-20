@@ -24,7 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>One alert per provider per hour, and one recovery per incident. The threshold is
  * {@code gateway.alert.error-rate} (default 0.25) and the rate is ignored until the
- * provider has {@code gateway.alert.min-samples} recent calls (default 20).
+ * provider has {@code gateway.alert.min-samples} recorded samples (default 20). The count
+ * is the provider's sample total, not a decaying window; the EWMA itself is what makes the
+ * rate recent.
  */
 @Component
 @RequiredArgsConstructor

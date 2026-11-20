@@ -91,7 +91,7 @@ public class GatewayProperties {
     public static class Alert {
         /** EWMA error rate above which a provider is reported. 0 disables the check. */
         private double errorRate = 0.25;
-        /** Recent calls a provider needs before its rate is trusted (cold start is not an incident). */
+        /** Samples a provider needs before its rate is trusted (a cold start is not an incident). */
         private int minSamples = 20;
     }
 

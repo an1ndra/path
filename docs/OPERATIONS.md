@@ -181,7 +181,7 @@ failing 30% of calls with an occasional success is never parked and requests are
 retried onto a fallback. A check runs every minute over the routing EWMA and fires
 `provider.error_rate_high` when the count-weighted rate per provider exceeds
 `GATEWAY_ALERT_ERROR_RATE` (default 0.25) with at least `GATEWAY_ALERT_MIN_SAMPLES`
-(default 20) recent calls. The payload carries `provider`, `error_rate`, `samples`,
+(default 20) samples recorded. The payload carries `provider`, `error_rate`, `samples`,
 `threshold` and the EWMA `latency_ms`. One alert per provider per hour; when the rate falls
 below half the threshold, `provider.error_rate_normal` closes the incident. A provider with
 too few samples is ignored: a cold start is not an incident.

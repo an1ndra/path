@@ -339,7 +339,7 @@ def main():
     status, docs_headers, docs = jreq("GET", "/v3/api-docs")
     check("OpenAPI spec is served", status == 200 and "/v1/chat/completions" in json.dumps(docs), str(status))
 
-    status, _, prom = jreq("GET", "/actuator/prometheus")
+    status, _, prom = jreq("GET", "/actuator/prometheus", admin=True)
     check("Prometheus metrics are exposed",
           status == 200 and "path_requests_total" in prom.get("_raw", ""), str(status))
 

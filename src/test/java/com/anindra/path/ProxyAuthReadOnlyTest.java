@@ -27,6 +27,20 @@ class ProxyAuthReadOnlyTest {
     private MockMvc mvc;
 
     @Test
+    void reportsTheProxyIdentityAndItsScopes() throws Exception {
+        mvc.perform(get("/admin/settings").header("X-Forwarded-User", "viewer@example.com"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.auth_mode").value("proxy"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.subject").value("viewer@example.com"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.scopes[0]").value("read"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.can_write").value(false));
+    }
+
+    @Test
     void canRead() throws Exception {
         mvc.perform(get("/admin/providers").header("X-Forwarded-User", "viewer@example.com"))
                 .andExpect(status().isOk());

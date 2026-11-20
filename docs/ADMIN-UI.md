@@ -26,6 +26,17 @@ curl -X POST http://localhost:8080/admin/tokens \
 `scopes` is `read` or `read,write`. Revoke with `POST /admin/tokens/{id}/revoke`.
 Every admin write is recorded in `GET /admin/audit`.
 
+`GET /admin/settings` reports the caller's own scopes so the console can adapt instead of
+discovering a restriction through a failed write:
+
+```json
+{"auth_mode": "token", "subject": "anindra-laptop", "scopes": ["read"], "can_write": false}
+```
+
+`subject` is the token name, or the SSO identity in proxy mode. The console hides (or
+disables with a tooltip) every create, edit, delete and revoke control when `scopes` does
+not contain `write`, and shows a "read-only token" badge. Neither value is a credential.
+
 ## Single sign-on
 
 SSO, 2FA and passkeys are delegated to an authenticating proxy — Authentik, Keycloak,

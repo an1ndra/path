@@ -204,6 +204,25 @@ class GatewayApiTest {
     }
 
     @Test
+    void adminSettingsReportsTheTokenScopesAndSubject() throws Exception {
+        // A read-scoped token must be able to learn that it is read-only, so the console can
+        // hide the write controls instead of failing with a 403 after the click.
+        String readOnly = tenancy.createToken("settings-viewer", "read").plaintext();
+        mvc.perform(get("/admin/settings").header("X-Admin-Token", readOnly))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subject").value("settings-viewer"))
+                .andExpect(jsonPath("$.scopes.length()").value(1))
+                .andExpect(jsonPath("$.scopes[0]").value("read"))
+                .andExpect(jsonPath("$.can_write").value(false));
+
+        mvc.perform(get("/admin/settings").header("X-Admin-Token", "test-admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subject").value("bootstrap"))
+                .andExpect(jsonPath("$.scopes[?(@ == 'write')]").exists())
+                .andExpect(jsonPath("$.can_write").value(true));
+    }
+
+    @Test
     void adminRequiresToken() throws Exception {
         mvc.perform(get("/admin/providers"))
                 .andExpect(status().isUnauthorized());

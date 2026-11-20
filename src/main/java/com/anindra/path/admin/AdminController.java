@@ -166,14 +166,26 @@ public class AdminController {
     }
 
     @GetMapping("/settings")
-    public Map<String, Object> settings() {
+    public Map<String, Object> settings(jakarta.servlet.http.HttpServletRequest request) {
         Map<String, Object> guardrails = new java.util.LinkedHashMap<>();
         guardrails.put("prompt_log_redaction", props.getGuardrails().isPromptLogRedaction());
         guardrails.put("redact_before_send", props.getGuardrails().isRedactBeforeSend());
         guardrails.put("moderation", props.getGuardrails().isModeration());
 
+        // The principal is set by AuthFilter for every /admin call. Reporting the scopes lets
+        // the console render read-only instead of letting the operator discover it via a 403.
+        // A token name and its scopes are not credentials, so this is safe to expose.
+        TenancyService.Principal principal = request.getAttribute(
+                com.anindra.path.config.AuthFilter.ADMIN_PRINCIPAL_ATTR) instanceof TenancyService.Principal p
+                ? p : null;
+        List<String> scopes = principal == null ? List.of()
+                : principal.scopes().stream().sorted().toList();
+
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("auth_mode", props.getProxyAuth().isEnabled() ? "proxy" : "token");
+        out.put("subject", principal == null ? null : principal.name());
+        out.put("scopes", scopes);
+        out.put("can_write", scopes.contains("write"));
         out.put("prompt_logging", props.getPromptLogging().isEnabled());
         out.put("guardrails", guardrails);
         out.put("rate_limit_backend", props.getRateLimit().getBackend());

@@ -24,6 +24,7 @@ public class AdminController {
     private final AliasService aliasService;
     private final AlertService alerts;
     private final MailSettingsService mailSettingsService;
+    private final DailyDigestService digest;
     private final com.anindra.path.config.GatewayProperties props;
 
     // ------------------------------------------------------------- providers
@@ -161,6 +162,34 @@ public class AdminController {
                     + "or GATEWAY_ALERT_WEBHOOK.");
         }
         audit.record("alert.test", "alert", null);
+        return out;
+    }
+
+    /**
+     * Sends yesterday's digest now, and returns the rendered text either way, so an
+     * operator can check the mailbox and the numbers before trusting the 08:00 job.
+     */
+    @PostMapping("/digest/test")
+    public Map<String, Object> digestTest(@RequestParam(required = false) String date) {
+        java.time.LocalDate day;
+        try {
+            day = date == null || date.isBlank()
+                    ? java.time.LocalDate.now().minusDays(1)
+                    : java.time.LocalDate.parse(date);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw com.anindra.path.api.ApiException.badRequest(
+                    "date must be an ISO date such as 2026-11-19", "date");
+        }
+        DailyDigestService.Result result = digest.send(day);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("date", day.toString());
+        out.put("sent", result.sent());
+        if (result.reason() != null) {
+            out.put("reason", result.reason());
+        }
+        out.put("subject", result.subject());
+        out.put("text", result.text());
+        audit.record("digest.test", day.toString(), null);
         return out;
     }
 

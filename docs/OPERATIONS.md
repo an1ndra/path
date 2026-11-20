@@ -111,7 +111,7 @@ digest is written to the workflow summary so it can be pinned.
   with a 64-entry queue. When a queue is full the alert is dropped and counted as
   `outcome="dropped"` on that channel instead of blocking the request that raised it.
   Email is not retried: a real SMTP server has its own queue, and a retry here could
-  duplicate a message it already accepted. `channel="email"` carries `delivered` and
+  duplicate a message it already accepted. `channel="email"` and `channel="digest"` carry `delivered` and
   `dropped` only.
 - **Mail settings are editable from the console** (`GET/PUT /admin/mail-settings`): host,
   port, username, password, from and recipients. They win over `SPRING_MAIL_*`, which stays
@@ -192,6 +192,16 @@ retried onto a fallback. A check runs every minute over the routing EWMA and fir
 `threshold` and the EWMA `latency_ms`. One alert per provider per hour; when the rate falls
 below half the threshold, `provider.error_rate_normal` closes the incident. A provider with
 too few samples is ignored: a cold start is not an incident.
+
+**Daily digest.** One email a day (`GATEWAY_DIGEST_CRON`, default 08:00 in the gateway's
+time zone) summarises yesterday: requests with the day-over-day delta, spend, tokens with
+the cache hit ratio and savings, failures with the top error code, the slowest model's p95,
+the top three models by spend, and any provider whose circuit is open at send time. It
+needs the same mail settings as alert email and is silently off without them; a day with no
+requests sends nothing, and a mailbox failure only logs a warning. Disable it with
+`GATEWAY_DIGEST=false`. `POST /admin/digest/test?date=2026-11-19` sends it on demand and
+returns the rendered text (and the reason when it did not send), so the schedule can be
+trusted before the first morning.
 
 ### Prometheus rules
 

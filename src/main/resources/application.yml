@@ -105,6 +105,10 @@ gateway:
     webhook-url: ${GATEWAY_ALERT_WEBHOOK:}
     cooldown: ${GATEWAY_ALERT_COOLDOWN:1h}
     budget-threshold: ${GATEWAY_ALERT_BUDGET_THRESHOLD:0.8}
+  digest:
+    # One email a day summarising yesterday. Only sends when an email channel is configured.
+    enabled: ${GATEWAY_DIGEST:true}
+    cron: "${GATEWAY_DIGEST_CRON:0 0 8 * * *}"
   usage-retention: ${GATEWAY_USAGE_RETENTION:180d}
   idempotency:
     ttl: ${GATEWAY_IDEMPOTENCY_TTL:24h}

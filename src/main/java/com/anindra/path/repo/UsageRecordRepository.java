@@ -25,6 +25,47 @@ public interface UsageRecordRepository extends JpaRepository<UsageRecord, Long> 
 
     long countByCreatedAtAfter(Instant from);
 
+    long countByCreatedAtBetween(Instant from, Instant to);
+
+    long countByStatusAndCreatedAtBetween(UsageRecord.Status status, Instant from, Instant to);
+
+    @Query("select coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    BigDecimal sumCostBetween(Instant from, Instant to);
+
+    @Query("select coalesce(sum(u.totalTokens), 0) from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    Long sumTokensBetween(Instant from, Instant to);
+
+    @Query("select coalesce(sum(u.promptTokens), 0) from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    Long sumPromptTokensBetween(Instant from, Instant to);
+
+    @Query("select coalesce(sum(u.cachedInputTokens), 0) from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    Long sumCachedTokensBetween(Instant from, Instant to);
+
+    @Query("select coalesce(sum(u.cachedSavingsUsd), 0) from UsageRecord u "
+            + "where u.createdAt >= :from and u.createdAt < :to")
+    BigDecimal sumCachedSavingsBetween(Instant from, Instant to);
+
+    @Query("select u.errorCode, count(u) from UsageRecord u "
+            + "where u.status = com.anindra.path.domain.UsageRecord.Status.ERROR "
+            + "and u.errorCode is not null and u.createdAt >= :from and u.createdAt < :to "
+            + "group by u.errorCode order by count(u) desc")
+    List<Object[]> topErrorCodesBetween(Instant from, Instant to, Pageable pageable);
+
+    @Query("select u.publicModelId, coalesce(sum(u.costUsd), 0) from UsageRecord u "
+            + "where u.publicModelId is not null and u.createdAt >= :from and u.createdAt < :to "
+            + "group by u.publicModelId order by sum(u.costUsd) desc")
+    List<Object[]> topModelsByCostBetween(Instant from, Instant to, Pageable pageable);
+
+    @Query("select u.publicModelId, u.latencyMs from UsageRecord u "
+            + "where u.status = com.anindra.path.domain.UsageRecord.Status.SUCCESS "
+            + "and u.publicModelId is not null and u.createdAt >= :from and u.createdAt < :to "
+            + "order by u.createdAt desc")
+    List<Object[]> successLatenciesBetween(Instant from, Instant to, Pageable pageable);
+
     long countByCreatedAtAfterAndCacheTier(Instant from, String cacheTier);
 
     long countByClientKeyIdInAndCreatedAtAfterAndCacheTier(

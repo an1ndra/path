@@ -81,6 +81,17 @@ public class GatewayProperties {
     private ClientAuth clientAuth = new ClientAuth();
     private ProxyAuth proxyAuth = new ProxyAuth();
     private Alert alert = new Alert();
+    private Digest digest = new Digest();
+
+    /** Daily spend digest. Off when no email channel is configured, whatever this says. */
+    @Getter
+    @Setter
+    public static class Digest {
+        /** GATEWAY_DIGEST=false turns the daily email off without touching the cron. */
+        private boolean enabled = true;
+        /** Spring cron; the gateway's time zone, five fields by default. */
+        private String cron = "0 0 8 * * *";
+    }
 
     /**
      * Threshold alerts that are not tied to a single call (provider error rate).

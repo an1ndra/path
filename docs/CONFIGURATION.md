@@ -58,6 +58,8 @@ last two with `request_timeout_ms` and `stream_idle_timeout_ms`.
 | `GATEWAY_SEMANTIC_MAX_ENTRIES` | `200` | candidates compared per key and model |
 | `GATEWAY_ALERT_EMAIL_TO` (or the console) | blank (off) | comma-separated recipients for alert email |
 | `GATEWAY_ALERT_EMAIL_FROM` | `path-gateway@localhost` | From address |
+| `GATEWAY_DIGEST` | `true` | send one daily summary email (needs the alert email channel; off without it) |
+| `GATEWAY_DIGEST_CRON` | `0 0 8 * * *` | when to send it, in the gateway's time zone |
 | `SPRING_MAIL_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | — | SMTP server; without `SPRING_MAIL_HOST` email alerting stays off |
 | `GATEWAY_GUARDRAILS_LOG_REDACTION` | `true` | redact PII before a prompt is written to the prompt log |
 | `GATEWAY_GUARDRAILS_REDACT` | `false` | redact the prompt the provider receives |

@@ -40,8 +40,19 @@ public class V21__Provider_types extends BaseJavaMigration {
 
     private List<String> checkConstraints(Connection connection) throws Exception {
         List<String> names = new ArrayList<>();
-        String sql = "select constraint_name from information_schema.table_constraints "
-                + "where lower(table_name) = '" + TABLE + "' and constraint_type = 'CHECK'";
+        // Filter on the clause, not just the constraint type. Postgres 16 reports NOT NULL
+        // as a CHECK constraint in information_schema.table_constraints with a synthetic
+        // name that cannot be dropped (ERROR: constraint "..._not_null" does not exist),
+        // which failed this migration and crash-looped the gateway. Only the type check
+        // mentions OPENAI.
+        String sql = "select tc.constraint_name "
+                + "from information_schema.table_constraints tc "
+                + "join information_schema.check_constraints cc "
+                + "  on cc.constraint_name = tc.constraint_name "
+                + " and cc.constraint_schema = tc.constraint_schema "
+                + "where lower(tc.table_name) = '" + TABLE + "' "
+                + "  and tc.constraint_type = 'CHECK' "
+                + "  and cc.check_clause like '%OPENAI%'";
         try (Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery(sql)) {
             while (rows.next()) {

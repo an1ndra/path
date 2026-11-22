@@ -20,7 +20,7 @@ database. The console is always a plain Application.
 3. Compose path: `deploy/dokploy/compose.yml`.
 4. **Trigger Type: On Tag**, with auto-deploy enabled. The gateway is a production
    service; a pull request or a push to `Develop` must not restart it. A release tag
-   (`v0.2.6`) is the only thing that deploys — see "When it deploys" below.
+   (`v0.2.7`) is the only thing that deploys — see "When it deploys" below.
 5. **Environment** (the compose file references all of these):
 
 ```bash

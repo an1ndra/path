@@ -30,9 +30,12 @@ GATEWAY_ADMIN_TOKEN=<openssl rand -hex 32>      # only for token auth; ignore wi
 GATEWAY_CORS_ORIGINS=https://admin.example.com  # omit if same hostname as the console
 ```
 
+The compose file passes `GATEWAY_SEED_DEFAULTS` through with a `false` default, so a fresh
+database starts with an empty catalogue and the console is where providers and routes are
+added. Set it to `true` only on a demo instance.
+
 6. Domain: point `gw.example.com` at port **8080**, enable HTTPS.
-7. Deploy. First boot logs `Gateway ready. Admin API: enabled` and, if `-P release` was
-   used, seeds four providers.
+7. Deploy. First boot logs `Gateway ready. Admin API: enabled`.
 
 ### When it deploys
 

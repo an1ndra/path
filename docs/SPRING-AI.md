@@ -13,7 +13,7 @@ on Spring AI; the gateway never depends on it.
 <dependency>
     <groupId>io.github.an1ndra</groupId>
     <artifactId>path-spring-ai</artifactId>
-    <version>0.2.5</version>
+    <version>0.2.6</version>
 </dependency>
 ```
 

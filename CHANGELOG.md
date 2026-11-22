@@ -5,6 +5,7 @@ verbatim as the body of the matching GitHub release.
 
 | Version | Date | Notes |
 |---|---|---|
+| v0.2.6 | 2026-11-23 | [changelog/v0.2.6.md](changelog/v0.2.6.md) |
 | v0.2.5 | 2026-11-23 | [changelog/v0.2.5.md](changelog/v0.2.5.md) |
 | v0.2.4 | 2026-11-23 | [changelog/v0.2.4.md](changelog/v0.2.4.md) |
 | v0.2.3 | 2026-11-20 | [changelog/v0.2.3.md](changelog/v0.2.3.md) |

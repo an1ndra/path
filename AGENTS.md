@@ -21,7 +21,7 @@ dependency: the gateway translates to each provider's native protocol.
 
 # full end-to-end suite against a mock upstream (no real keys)
 python3 tools/mock-upstream.py 9099 &
-GATEWAY_ADMIN_TOKEN=test-admin java -jar path-gateway/target/path-*.jar &
+GATEWAY_ADMIN_TOKEN=test-admin GATEWAY_SEED_DEFAULTS=true java -jar path-gateway/target/path-*.jar &
 python3 tools/smoke_test.py
 
 # run locally

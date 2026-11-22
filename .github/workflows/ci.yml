@@ -103,6 +103,7 @@ jobs:
           mkdir -p /tmp/opencode
           python3 tools/mock-upstream.py 9099 > /tmp/opencode/mock.log 2>&1 &
           GATEWAY_ADMIN_TOKEN=test-admin \
+          GATEWAY_SEED_DEFAULTS=true \
           GATEWAY_PROMPT_LOGGING=true \
           GATEWAY_GUARDRAILS_MODERATION=true \
           GATEWAY_SEMANTIC_MODEL=embed-test \

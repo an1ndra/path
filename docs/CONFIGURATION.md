@@ -20,7 +20,7 @@ except the provider credentials you actually use.
 | Variable | Default | Meaning |
 |---|---|---|
 | `GATEWAY_BOOTSTRAP_DEMO_KEY` | `false` | create a demo key when the table is empty (ignored in `prod`) |
-| `GATEWAY_SEED_DEFAULTS` | `true` | seed the example provider/route catalogue on boot; set `false` on a real deployment |
+| `GATEWAY_SEED_DEFAULTS` | `false` | seed the example provider/route catalogue into an empty database (demo instances only) |
 | `GATEWAY_DEFAULT_RPM` | `120` | default requests/minute for new keys |
 | `GATEWAY_DEFAULT_CREDIT_USD` | unlimited | default credit limit for new keys |
 | `GATEWAY_DEFAULT_MAX_CONCURRENT` | `8` | in-flight requests per key (0 = unlimited) |
@@ -97,7 +97,7 @@ way, so they are correct in a cluster regardless of this setting.
 
 | Variable | Meaning |
 |---|---|
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` | credentials for the seeded providers |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` | credentials for the providers with those slugs |
 | `GATEWAY_UPSTREAM_<SLUG>_KEY` | credential for any other provider slug (e.g. `GATEWAY_UPSTREAM_TOGETHER_KEY`) |
 
 Resolution order: **database → `application.yml` → environment**. A key stored through
@@ -105,25 +105,54 @@ the admin API silently wins over the environment, which makes rotation possible 
 a restart. Credentials in the database are AES-GCM encrypted with a key from
 `GATEWAY_MASTER_KEY` or the generated `./data/master.key` (0600).
 
-A provider row must exist before its environment variable is read; `openai`, `anthropic`,
-`groq` and `gemini` are seeded.
+A provider row must exist before its environment variable is read. Nothing is seeded by
+default any more, so create the provider once (console or `POST /admin/providers`) and the
+well-known variable for that slug takes over on the next boot. The four conventional slugs
+are `openai`, `anthropic`, `groq` and `gemini`; anything else uses
+`GATEWAY_UPSTREAM_<SLUG>_KEY`.
+
+To see the example catalogue on a throwaway instance, set `GATEWAY_SEED_DEFAULTS=true`.
+It only fills an empty catalogue, and a provider deleted later stays deleted.
+
+### Common upstreams
+
+Ready-made values for the providers most people add first. Everything here is an
+`OPENAI`-type row except Gemini native and Vertex:
+
+| Provider | Slug | Type | Base URL |
+|---|---|---|---|
+| ChatGPT / OpenAI | `openai` | `OPENAI` | `https://api.openai.com/v1` |
+| Gemini (OpenAI-compatible) | `gemini` | `OPENAI` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Gemini native (AI Studio) | `gemini-native` | `GEMINI` | `https://generativelanguage.googleapis.com/v1beta` |
+| OpenCode | `opencode` | `OPENAI` | `https://opencode.ai/inference/openai/v1` |
+| OpenCode Go | `opencode-go` | `OPENAI` | `https://opencode.ai/inference/go/openai/v1` |
+| Anthropic | `anthropic` | `ANTHROPIC` | `https://api.anthropic.com/v1` |
+| Groq | `groq` | `OPENAI` | `https://api.groq.com/openai/v1` |
+
+For a slug not in this table the credential variable is `GATEWAY_UPSTREAM_<SLUG>_KEY`
+(OpenCode uses `OPENCODE_API_KEY` by convention, so set
+`GATEWAY_UPSTREAM_OPENCODE_KEY` or paste the key into the console).
+
+Each route needs the upstream model id and a price per million tokens; a `0.00` price
+records usage but never charges it. `POST /admin/models/sync` imports a provider's list
+and prices only ids in its built-in table, so check anything it leaves at `0.00`.
 
 ### Gemini
 
-Gemini is seeded as an `OPENAI`-type provider pointing at Google's
-OpenAI-compatible endpoint:
+Google exposes an OpenAI-compatible endpoint, so a plain `OPENAI`-type provider works:
 
 ```
 base_url = https://generativelanguage.googleapis.com/v1beta/openai
 ```
 
-Set `GEMINI_API_KEY` and add a route per model you want to expose; the upstream id is
+Create that provider (console → Providers → Add, or `POST /admin/providers`), set
+`GEMINI_API_KEY`, and add a route per model you want to expose; the upstream id is
 whatever Gemini calls it (`gemini-2.5-flash`, `gemini-3-flash`, …):
 
 ```bash
 A='X-Admin-Token: ...'
 curl -s -X POST localhost:8080/admin/routes -H "$A" -H 'Content-Type: application/json' \
-  -d '{"public_model_id":"gemini-2.5-flash","provider_id":4,
+  -d '{"public_model_id":"gemini-2.5-flash","provider_id":<gemini-provider-id>,
        "upstream_model_id":"gemini-2.5-flash",
        "input_price_per_million":0.30,"output_price_per_million":2.50,
        "priority":10}'

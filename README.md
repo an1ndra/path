@@ -66,8 +66,12 @@ export GATEWAY_ADMIN_TOKEN=pick-something-long
 ./mvnw -pl path-gateway spring-boot:run
 ```
 
-First boot seeds four providers and a starter route table. To also mint a demo key
-(off by default, never in the `prod` profile), start with
+First boot does **not** create providers or routes: a real deployment configures its own,
+so the console starts empty instead of showing a catalogue nobody owns. For a 60-second
+tour against example providers and routes, start with `GATEWAY_SEED_DEFAULTS=true`; it
+only fills an empty database, and anything you delete stays deleted.
+
+To also mint a demo key (off by default, never in the `prod` profile), add
 `GATEWAY_BOOTSTRAP_DEMO_KEY=true`; it is printed once in the log:
 
 ```
@@ -81,6 +85,9 @@ curl -s http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"auto-fast","messages":[{"role":"user","content":"Say hi"}]}'
 ```
+
+`auto-fast` is one of the example routes, so the call above needs `GATEWAY_SEED_DEFAULTS=true`
+on that boot. With real providers, use the model ids you created in the console.
 
 Any OpenAI SDK works — point `base_url` at `http://localhost:8080/v1`:
 

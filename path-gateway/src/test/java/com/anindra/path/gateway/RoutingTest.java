@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.url=jdbc:h2:mem:routingtest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=validate",
         "gateway.bootstrap-demo-key=false",
+        "gateway.seed-defaults=true",
         "gateway.master-key-path=./target/test-master.key"
 })
 class RoutingTest {

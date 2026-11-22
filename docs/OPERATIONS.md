@@ -33,6 +33,36 @@ curl -s -X POST localhost:8080/admin/keys/1/revoke -H "$A"
 curl -s -X POST localhost:8080/admin/models/sync -H "$A"
 ```
 
+## Removing the example catalogue
+
+`GATEWAY_SEED_DEFAULTS=true` creates four providers (`openai`, `anthropic`, `groq`,
+`gemini`), a starter route table and, with `GATEWAY_BOOTSTRAP_DEMO_KEY`, a `demo-local`
+key. They carry no credentials, so they show up in the console as rows you cannot call.
+Deleting them in the console is enough — the seeder no longer recreates a deleted provider
+on the next boot. From a shell:
+
+```bash
+A='X-Admin-Token: pick-something-long'
+
+# what is there, and whether the credential actually resolves
+curl -s localhost:8080/admin/providers -H "$A" \
+  | jq -r '.[] | [.id, .slug, (.credential_configured|tostring)] | @tsv'
+
+# delete each example provider; its routes cascade with it
+for id in 1 2 3 4; do
+  curl -s -X DELETE "localhost:8080/admin/providers/$id" -H "$A"; echo
+done
+
+# revoke the demo key if it was created
+curl -s localhost:8080/admin/keys -H "$A" \
+  | jq -r '.[] | select(.name == "demo-local") | .id' \
+  | xargs -r -I{} curl -s -X POST "localhost:8080/admin/keys/{}/revoke" -H "$A"
+```
+
+Then set `GATEWAY_SEED_DEFAULTS=false` in the deployment and restart, so a fresh database
+is not filled again. Usage rows already written by the examples are history, not
+configuration; leave them or delete them with the retention job.
+
 ## Projects and admin tokens
 
 Projects group keys and usage. Admin tokens carry `read` or `read,write`; the bootstrap

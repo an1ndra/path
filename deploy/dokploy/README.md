@@ -18,7 +18,10 @@ database. The console is always a plain Application.
 1. Dokploy → **Create → Compose**.
 2. Source: GitHub → `an1ndra/path`, branch `main`.
 3. Compose path: `deploy/dokploy/compose.yml`.
-4. **Environment** (the compose file references all of these):
+4. **Trigger Type: On Tag**, with auto-deploy enabled. The gateway is a production
+   service; a pull request or a push to `Develop` must not restart it. A release tag
+   (`v0.2.4`) is the only thing that deploys — see "When it deploys" below.
+5. **Environment** (the compose file references all of these):
 
 ```bash
 POSTGRES_PASSWORD=<openssl rand -hex 24>
@@ -27,9 +30,31 @@ GATEWAY_ADMIN_TOKEN=<openssl rand -hex 32>      # only for token auth; ignore wi
 GATEWAY_CORS_ORIGINS=https://admin.example.com  # omit if same hostname as the console
 ```
 
-5. Domain: point `gw.example.com` at port **8080**, enable HTTPS.
-6. Deploy. First boot logs `Gateway ready. Admin API: enabled` and, if `-P release` was
-   used, seeds four providers.
+The compose file passes `GATEWAY_SEED_DEFAULTS` through with a `false` default, so a fresh
+database starts with an empty catalogue and the console is where providers and routes are
+added. Set it to `true` only on a demo instance.
+
+6. Domain: point `gw.example.com` at port **8080**, enable HTTPS.
+7. Deploy. First boot logs `Gateway ready. Admin API: enabled`.
+
+### When it deploys
+
+Dokploy is set to **On Tag**, not **On Push**. The release flow is:
+
+1. `Develop` is merged into `main` through a pull request (the required checks run there).
+2. A `vX.Y.Z` tag is pushed on the merge commit.
+3. The tag starts the GitHub release workflow (image scan, promotion to GHCR, release
+   notes) and the Dokploy webhook (rebuild from that tag and restart).
+
+Pushes to `Develop`, pull requests and Dependabot branches therefore never touch
+production; only a tag does. If a deploy should be skipped for a tag, disable auto-deploy
+before pushing it.
+
+The compose builds from the tagged source (`build: context: ../..`) rather than pulling
+`:latest`. That is deliberate: both webhooks fire at the same moment, so a `:latest` pull
+would race the image build and could deploy the previous release. Building the tagged
+commit cannot race and guarantees the running code matches the tag. The GHCR image remains
+the artifact to run elsewhere (Kubernetes, another host) and the one Trivy gates.
 
 ### Application route (external Postgres)
 

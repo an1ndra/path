@@ -8,8 +8,9 @@ The admin console lives in its own repository, [an1ndra/path-admin](https://gith
 
 Read and write against this API: dashboard (spend, cache, latency, provider circuits, top
 models, recent failures), providers (create/edit with a provider API key, probe, delete),
-routes (create, enable/disable, delete), client keys (create with budgets and allowlists,
-top up, revoke).
+routes (add a model, enable/disable, delete), client keys (create with budgets and
+allowlists, top up, revoke), **configuration** (the gateway switches, alert email and the
+daily digest) and **settings** (the session: identity, scopes, token, sign out).
 
 ## Auth
 

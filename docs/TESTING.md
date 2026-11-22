@@ -30,9 +30,14 @@ admin surface and metering.
 
 ```bash
 python3 tools/mock-upstream.py 9099 &
-GATEWAY_ADMIN_TOKEN=test-admin java -jar path-gateway/target/path-0.2.2.jar &
+GATEWAY_ADMIN_TOKEN=test-admin GATEWAY_SEED_DEFAULTS=true \
+  java -jar path-gateway/target/path-0.2.2.jar &
 python3 tools/smoke_test.py
 ```
+
+The suite calls the example catalogue by name (`gpt-4o-mini`, `claude-3.5-haiku`,
+`auto-fast`, …), so it needs `GATEWAY_SEED_DEFAULTS=true` against a clean database. That
+flag is off by default for real deployments; CI sets it for this job.
 
 The mock switches behaviour by model id, which is how failure paths are tested:
 

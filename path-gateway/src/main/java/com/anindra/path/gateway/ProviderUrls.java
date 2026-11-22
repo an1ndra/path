@@ -56,6 +56,10 @@ public final class ProviderUrls {
             headers.put("Authorization", "Bearer " + apiKey);
         }
         headers.put("Accept", stream ? "text/event-stream" : "application/json");
+        // Java's HttpClient identifies itself as "Java-http-client/21". Some upstreams
+        // (OpenCode Go among them) require a client to name itself instead of looking like
+        // a generic library, and the version helps when reading provider-side logs.
+        headers.put("User-Agent", "path-gateway");
         return headers;
     }
 

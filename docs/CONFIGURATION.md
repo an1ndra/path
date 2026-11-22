@@ -137,6 +137,13 @@ Each route needs the upstream model id and a price per million tokens; a `0.00` 
 records usage but never charges it. `POST /admin/models/sync` imports a provider's list
 and prices only ids in its built-in table, so check anything it leaves at `0.00`.
 
+**OpenCode Go** requires two things no OpenAI SDK sends: a client that names itself in
+`User-Agent` and a stable `x-opencode-session` per conversation, otherwise it answers 400
+`upstream_invalid_request`. The gateway sends `User-Agent: path-gateway` and derives the
+session id from the model plus the first user message, so the same conversation keeps one
+id across retries and fallbacks. Point the provider at
+`https://opencode.ai/inference/go/openai/v1`.
+
 ### Gemini
 
 Google exposes an OpenAI-compatible endpoint, so a plain `OPENAI`-type provider works:

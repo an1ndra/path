@@ -11,7 +11,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +51,42 @@ public class OpenAiCompatibleAdapter implements ProviderAdapter {
         }
 
         Map<String, String> headers = ProviderUrls.headers(provider, apiKey, stream);
+        if (isOpenCode(provider)) {
+            headers.put("x-opencode-session", sessionId(route.getUpstreamModelId(), body));
+        }
         return new UpstreamRequest(ProviderUrls.chat(provider, route.getUpstreamModelId()),
                 headers, body.toString());
+    }
+
+    /**
+     * OpenCode Go (and its OpenAI-compatible endpoint) rejects a request without
+     * {@code x-opencode-session}: "Request is missing x-opencode-session and cannot be
+     * routed efficiently". The header is meant to be stable per conversation, so it is
+     * derived from the model and the first user message: the same conversation keeps the
+     * same id across retries and fallbacks, a new conversation gets a new one.
+     */
+    private boolean isOpenCode(Provider provider) {
+        return provider.getSlug() != null && provider.getSlug().startsWith("opencode");
+    }
+
+    private String sessionId(String model, ObjectNode body) {
+        StringBuilder seed = new StringBuilder(model).append('\n');
+        JsonNode messages = body.get("messages");
+        if (messages != null && messages.isArray()) {
+            for (JsonNode message : messages) {
+                if ("user".equals(message.path("role").asText())) {
+                    seed.append(message.path("content"));
+                    break;
+                }
+            }
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(seed.toString().getBytes(StandardCharsets.UTF_8));
+            return "path-" + HexFormat.of().formatHex(digest).substring(0, 32);
+        } catch (NoSuchAlgorithmException e) {
+            return "path-gateway";
+        }
     }
 
     @Override

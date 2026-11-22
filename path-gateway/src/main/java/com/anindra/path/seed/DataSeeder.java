@@ -40,11 +40,15 @@ public class DataSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        boolean fresh = providers.count() == 0;
+        // Seed only into a completely empty catalogue. Creating providers by slug on every
+        // boot would resurrect one an operator deleted on purpose, which is exactly the
+        // "dummy data keeps coming back" complaint.
+        boolean fresh = providers.count() == 0 && routes.count() == 0;
         if (props.isSeedDefaults()) {
-            Map<String, Provider> bySlug = ensureProviders();
-            if (fresh && routes.count() == 0) {
-                seedRoutes(bySlug);
+            if (fresh) {
+                seedRoutes(createExampleProviders());
+            } else {
+                log.info("Gateway already has providers/routes: not adding the example catalogue.");
             }
         } else {
             log.info("Gateway seed-defaults is off: not creating the example provider/route catalogue.");
@@ -71,17 +75,17 @@ public class DataSeeder implements ApplicationRunner {
                         : "enabled (send X-Admin-Token)");
     }
 
-    private Map<String, Provider> ensureProviders() {
+    private Map<String, Provider> createExampleProviders() {
         Map<String, Provider> bySlug = new LinkedHashMap<>();
-        bySlug.put("openai", providers.findBySlug("openai").orElseGet(() -> providers.save(
-                new Provider("openai", "OpenAI", ProviderType.OPENAI, "https://api.openai.com/v1"))));
-        bySlug.put("anthropic", providers.findBySlug("anthropic").orElseGet(() -> providers.save(
-                new Provider("anthropic", "Anthropic", ProviderType.ANTHROPIC, "https://api.anthropic.com/v1"))));
-        bySlug.put("groq", providers.findBySlug("groq").orElseGet(() -> providers.save(
-                new Provider("groq", "Groq", ProviderType.OPENAI, "https://api.groq.com/openai/v1"))));
-        bySlug.put("gemini", providers.findBySlug("gemini").orElseGet(() -> providers.save(
+        bySlug.put("openai", providers.save(
+                new Provider("openai", "OpenAI", ProviderType.OPENAI, "https://api.openai.com/v1")));
+        bySlug.put("anthropic", providers.save(
+                new Provider("anthropic", "Anthropic", ProviderType.ANTHROPIC, "https://api.anthropic.com/v1")));
+        bySlug.put("groq", providers.save(
+                new Provider("groq", "Groq", ProviderType.OPENAI, "https://api.groq.com/openai/v1")));
+        bySlug.put("gemini", providers.save(
                 new Provider("gemini", "Google Gemini", ProviderType.OPENAI,
-                        "https://generativelanguage.googleapis.com/v1beta/openai"))));
+                        "https://generativelanguage.googleapis.com/v1beta/openai")));
         return bySlug;
     }
 

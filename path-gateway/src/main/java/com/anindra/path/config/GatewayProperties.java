@@ -45,10 +45,11 @@ public class GatewayProperties {
     private boolean bootstrapDemoKey = false;
 
     /**
-     * Seed the example provider/route catalogue on boot. A real deployment wants this off:
-     * otherwise four providers nobody configured reappear on every restart.
+     * Seed the example provider/route catalogue on boot. Off by default: a real deployment
+     * configures its own providers, and the examples would otherwise reappear on every
+     * restart. Only a throwaway demo instance sets this.
      */
-    private boolean seedDefaults = true;
+    private boolean seedDefaults = false;
 
     private int defaultRpmLimit = 120;
 

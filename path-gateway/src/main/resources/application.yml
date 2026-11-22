@@ -56,9 +56,10 @@ gateway:
   master-key: ${GATEWAY_MASTER_KEY:}
   master-key-path: ${GATEWAY_MASTER_KEY_PATH:./data/master.key}
   bootstrap-demo-key: ${GATEWAY_BOOTSTRAP_DEMO_KEY:false}
-  # Seed the example provider/route catalogue on boot. Turn off for a real deployment,
-  # otherwise four providers you never configured appear in the console on every start.
-  seed-defaults: ${GATEWAY_SEED_DEFAULTS:true}
+  # Seed the example provider/route catalogue on boot. Off by default: a real deployment
+  # configures its own providers, and the examples would otherwise reappear in the console
+  # after a restart. Set true only for a throwaway demo instance.
+  seed-defaults: ${GATEWAY_SEED_DEFAULTS:false}
   default-rpm-limit: ${GATEWAY_DEFAULT_RPM:120}
   default-credit-limit-usd: ${GATEWAY_DEFAULT_CREDIT_USD:}
   default-max-concurrent: ${GATEWAY_DEFAULT_MAX_CONCURRENT:8}

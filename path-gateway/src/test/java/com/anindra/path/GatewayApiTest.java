@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.hibernate.ddl-auto=validate",
         "gateway.admin-token=test-admin",
         "gateway.bootstrap-demo-key=false",
+        "gateway.seed-defaults=true",
         "gateway.master-key-path=./target/test-master.key"
 })
 @AutoConfigureMockMvc

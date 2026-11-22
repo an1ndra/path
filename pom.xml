@@ -13,7 +13,7 @@
 
     <groupId>io.github.an1ndra</groupId>
     <artifactId>path-parent</artifactId>
-    <version>0.2.4</version>
+    <version>0.2.5</version>
     <packaging>pom</packaging>
     <name>path-parent</name>
     <description>Build parent for Path, the provider-agnostic LLM gateway, and its Spring AI adapter</description>

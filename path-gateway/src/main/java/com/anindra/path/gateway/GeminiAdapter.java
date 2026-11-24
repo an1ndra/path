@@ -471,6 +471,8 @@ public class GeminiAdapter implements ProviderAdapter {
         private TokenUsage usage = TokenUsage.EMPTY;
         private boolean done;
         private boolean finishSent;
+        private boolean sawToolCall;
+        private int toolCallIndex;
 
         private Translator(ChatRequestSpec spec) {
             this.spec = spec;
@@ -504,22 +506,51 @@ public class GeminiAdapter implements ProviderAdapter {
                 return List.of();
             }
             StringBuilder text = new StringBuilder();
+            List<JsonNode> toolChunks = new ArrayList<>();
             for (JsonNode part : candidate.path("content").path("parts")) {
                 if (part.hasNonNull("text") && !part.path("thought").asBoolean(false)) {
                     text.append(part.get("text").asText());
                 }
+                if (part.has("functionCall")) {
+                    sawToolCall = true;
+                    toolChunks.add(toolCallChunk(part.get("functionCall"), toolCallIndex++));
+                }
             }
             String finish = candidate.hasNonNull("finishReason")
                     ? mapFinish(candidate.get("finishReason").asText()) : null;
-            List<JsonNode> out = new ArrayList<>(1);
-            if (finish != null) {
-                out.add(chunk("", finish));
-                done = true;
-                finishSent = true;
-            } else if (!text.isEmpty()) {
+            List<JsonNode> out = new ArrayList<>(1 + toolChunks.size());
+            if (!text.isEmpty()) {
                 out.add(chunk(text.toString(), null));
             }
+            out.addAll(toolChunks);
+            if (finish != null) {
+                out.add(chunk("", sawToolCall ? "tool_calls" : finish));
+                done = true;
+                finishSent = true;
+            }
             return out;
+        }
+
+        private ObjectNode toolCallChunk(JsonNode call, int index) {
+            ObjectNode chunk = mapper.createObjectNode();
+            chunk.put("id", "chatcmpl-gemini");
+            chunk.put("object", "chat.completion.chunk");
+            chunk.put("created", created);
+            chunk.put("model", spec.publicModel());
+            ObjectNode choice = chunk.putArray("choices").addObject();
+            choice.put("index", 0);
+            ObjectNode delta = choice.putObject("delta");
+            delta.put("role", "assistant");
+            ArrayNode calls = delta.putArray("tool_calls");
+            ObjectNode callNode = calls.addObject();
+            callNode.put("index", index);
+            callNode.put("id", "call_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+            callNode.put("type", "function");
+            ObjectNode function = callNode.putObject("function");
+            function.put("name", call.path("name").asText());
+            function.put("arguments", call.path("args").toString());
+            choice.putNull("finish_reason");
+            return chunk;
         }
 
         private ObjectNode chunk(String content, String finishReason) {

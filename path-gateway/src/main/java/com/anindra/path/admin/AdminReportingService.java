@@ -322,6 +322,8 @@ public class AdminReportingService {
         cache.put("savings_usd", savings);
         cache.put("semantic_hits", rows.stream()
                 .filter(r -> "semantic".equals(r.getCacheTier())).count());
+        cache.put("exact_hits", rows.stream()
+                .filter(r -> "exact".equals(r.getCacheTier())).count());
         out.put("cache", cache);
         out.put("fallback_requests", rows.stream().filter(r -> r.getAttempts() > 1).count());
         out.put("estimated_usage_requests", rows.stream().filter(UsageRecord::isUsageEstimated).count());

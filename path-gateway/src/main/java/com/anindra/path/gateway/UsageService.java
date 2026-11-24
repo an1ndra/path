@@ -405,6 +405,7 @@ public class UsageService {
         cache.put("hit_ratio", ratio(cachedTokens, promptTokens));
         cache.put("savings_usd", savings);
         cache.put("semantic_hits", usage.countByCreatedAtAfterAndCacheTier(from, "semantic"));
+        cache.put("exact_hits", usage.countByCreatedAtAfterAndCacheTier(from, "exact"));
         out.put("cache", cache);
 
         out.put("fallback_requests", usage.countByAttemptsGreaterThanAndCreatedAtAfter(1, from));

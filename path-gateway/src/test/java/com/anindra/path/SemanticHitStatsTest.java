@@ -79,6 +79,7 @@ class SemanticHitStatsTest {
         Map<String, Object> stats = reporting.stats("24h", null, null);
 
         assertThat(cache(stats).get("semantic_hits")).isEqualTo(2L);
+        assertThat(cache(stats).get("exact_hits")).isEqualTo(1L);
     }
 
     @Test
@@ -96,6 +97,7 @@ class SemanticHitStatsTest {
         Map<String, Object> stats = reporting.stats("24h", projectId, null);
 
         assertThat(cache(stats).get("semantic_hits")).isEqualTo(1L);
+        assertThat(cache(stats).get("exact_hits")).isEqualTo(0L);
     }
 
     @Test
@@ -103,5 +105,6 @@ class SemanticHitStatsTest {
         Map<String, Object> stats = reporting.stats("24h", null, null);
 
         assertThat(cache(stats).get("semantic_hits")).isEqualTo(0L);
+        assertThat(cache(stats).get("exact_hits")).isEqualTo(0L);
     }
 }

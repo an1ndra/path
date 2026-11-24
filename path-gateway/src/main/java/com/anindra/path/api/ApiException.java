@@ -40,6 +40,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(403, "permission_error", "forbidden", message);
     }
 
+    public static ApiException forbidden(String message, String code) {
+        return new ApiException(403, "permission_error", code, message);
+    }
+
     public static ApiException notFound(String message, String code) {
         return new ApiException(404, "invalid_request_error", code, message);
     }

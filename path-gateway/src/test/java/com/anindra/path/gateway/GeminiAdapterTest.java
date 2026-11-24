@@ -198,9 +198,41 @@ class GeminiAdapterTest {
         assertThat(first).hasSize(1);
         assertThat(first.get(0).path("choices").get(0).path("delta").path("content").asText())
                 .isEqualTo("Hel");
-        assertThat(second.get(0).path("choices").get(0).path("finish_reason").asText()).isEqualTo("stop");
+        assertThat(second).hasSize(2);
+        assertThat(second.get(0).path("choices").get(0).path("delta").path("content").asText())
+                .isEqualTo("lo");
+        assertThat(second.get(1).path("choices").get(0).path("finish_reason").asText()).isEqualTo("stop");
         assertThat(translator.done()).isTrue();
         assertThat(translator.usage().completion()).isEqualTo(3);
         assertThat(translator.usage().reasoning()).isEqualTo(1);
+    }
+
+    @Test
+    void streamsToolCallsAsOpenAiDeltas() throws Exception {
+        ChatRequestSpec spec = ChatRequestSpec.parse((ObjectNode) mapper.readTree("""
+                {"model":"gemini-2.5-pro","messages":[{"role":"user","content":"list files"}],
+                 "tools":[{"type":"function","function":{"name":"bash","parameters":
+                   {"type":"object","properties":{"command":{"type":"string"}}}}}]}
+                """));
+        StreamTranslator translator = adapter.newStreamTranslator(spec, route("gemini-2.5-pro"));
+
+        List<JsonNode> call = translator.translate(
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":"
+                        + "{\"name\":\"bash\",\"args\":{\"command\":\"ls\"}}}]}}]}");
+        List<JsonNode> finish = translator.translate(
+                "data: {\"candidates\":[{\"finishReason\":\"STOP\"}],"
+                        + "\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":4,"
+                        + "\"totalTokenCount\":9}}");
+
+        assertThat(call).hasSize(1);
+        JsonNode delta = call.get(0).path("choices").get(0).path("delta");
+        assertThat(delta.path("tool_calls").get(0).path("function").path("name").asText())
+                .isEqualTo("bash");
+        assertThat(delta.path("tool_calls").get(0).path("function").path("arguments").asText())
+                .contains("\"command\":\"ls\"");
+        assertThat(finish.get(0).path("choices").get(0).path("finish_reason").asText())
+                .isEqualTo("tool_calls");
+        assertThat(translator.done()).isTrue();
+        assertThat(translator.usage().completion()).isEqualTo(4);
     }
 }

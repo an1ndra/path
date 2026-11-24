@@ -122,6 +122,7 @@ public class UsageService {
         record.setTokensPerSecond(throughput(u, meta));
         record.setStreamed(meta.streamed());
         record.setUpstreamRequestId(meta.requestId());
+        record.setRequestId(currentRequestId());
         record.setFinishReason(meta.finishReason());
         record.setAttempts(meta.attempts());
         record.setFallbackFrom(meta.fallbackFrom());
@@ -154,6 +155,7 @@ public class UsageService {
         record.setAttempts(0);
         record.setFinishReason("cache");
         record.setCacheTier(tier);
+        record.setRequestId(currentRequestId());
         record.setStatus(UsageRecord.Status.SUCCESS);
         usage.save(record);
         metrics.counter("path.cache.hits",
@@ -179,6 +181,7 @@ public class UsageService {
         record.setStatus(UsageRecord.Status.ERROR);
         record.setErrorCode(code);
         record.setErrorMessage(message != null && message.length() > 500 ? message.substring(0, 500) : message);
+        record.setRequestId(currentRequestId());
         usage.save(record);
         // Kept separate from path_requests_total so an alert can tell a 4xx from a 5xx
         // without a high-cardinality label on the request counter.
@@ -349,6 +352,9 @@ public class UsageService {
             if (r.getUpstreamRequestId() != null) {
                 row.put("upstream_request_id", r.getUpstreamRequestId());
             }
+            if (r.getRequestId() != null) {
+                row.put("request_id", r.getRequestId());
+            }
             if (r.getFinishReason() != null) {
                 row.put("finish_reason", r.getFinishReason());
             }
@@ -451,5 +457,10 @@ public class UsageService {
 
     private static long nz(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private static String currentRequestId() {
+        String id = org.slf4j.MDC.get(com.anindra.path.config.RequestIdFilter.MDC_KEY);
+        return id == null || id.isBlank() ? null : id;
     }
 }

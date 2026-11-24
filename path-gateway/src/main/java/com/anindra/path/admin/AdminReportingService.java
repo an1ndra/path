@@ -78,6 +78,7 @@ public class AdminReportingService {
             row.put("ttft_ms", r.getTtftMs());
             row.put("tokens_per_second", r.getTokensPerSecond());
             row.put("upstream_request_id", r.getUpstreamRequestId());
+            row.put("request_id", r.getRequestId());
             row.put("finish_reason", r.getFinishReason());
             row.put("attempts", r.getAttempts());
             row.put("fallback_from", r.getFallbackFrom());

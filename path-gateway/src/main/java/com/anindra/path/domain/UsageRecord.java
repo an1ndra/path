@@ -97,6 +97,10 @@ public class UsageRecord {
     @Column(length = 128)
     private String upstreamRequestId;
 
+    /** Gateway correlation id (X-Request-Id), present on both success and error rows. */
+    @Column(length = 128)
+    private String requestId;
+
     @Column(length = 32)
     private String finishReason;
 

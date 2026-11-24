@@ -1,12 +1,17 @@
 package com.anindra.path.gateway;
 
 import com.anindra.path.config.GatewayProperties;
+import com.anindra.path.config.RequestIdFilter;
+import com.anindra.path.domain.UsageRecord;
 import com.anindra.path.repo.UsageRecordRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.slf4j.MDC;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 
 class ErrorMetricsTest {
 
@@ -38,5 +43,23 @@ class ErrorMetricsTest {
 
         assertThat(registry.counter("path.errors", "provider", "groq",
                 "class", "5xx", "code", "unknown").count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void anErrorRecordCarriesTheGatewayRequestId() {
+        UsageRecordRepository repo = Mockito.mock(UsageRecordRepository.class);
+        UsageService service = new UsageService(repo, Mockito.mock(ApiKeyService.class),
+                registry, new GatewayProperties());
+        MDC.put(RequestIdFilter.MDC_KEY, "req-123");
+        try {
+            service.recordError(null, null, "openai", "gpt-4o", 12, false, 1, 500,
+                    "upstream_error", "the provider fell over");
+        } finally {
+            MDC.remove(RequestIdFilter.MDC_KEY);
+        }
+
+        ArgumentCaptor<UsageRecord> saved = ArgumentCaptor.forClass(UsageRecord.class);
+        verify(repo).save(saved.capture());
+        assertThat(saved.getValue().getRequestId()).isEqualTo("req-123");
     }
 }

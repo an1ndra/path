@@ -88,6 +88,7 @@ gateway:
     enabled: ${GATEWAY_PROXY_AUTH:false}
     header: ${GATEWAY_PROXY_AUTH_HEADER:X-Forwarded-User}
     scopes: ${GATEWAY_PROXY_AUTH_SCOPES:read,write}
+    scopes-header: ${GATEWAY_PROXY_AUTH_SCOPES_HEADER:}
   admin-auth:
     max-failures: ${GATEWAY_ADMIN_AUTH_FAILURES:10}
     window: ${GATEWAY_ADMIN_AUTH_WINDOW:5m}

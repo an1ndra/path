@@ -141,6 +141,13 @@ public class GatewayProperties {
         private String header = "X-Forwarded-User";
         /** Scopes granted to a proxy-authenticated identity. */
         private String scopes = "read,write";
+        /**
+         * Optional header carrying per-identity scopes. When set, the proxy must send it for
+         * every admin request; a missing/empty header fails closed instead of inheriting
+         * the broader {@link #scopes} default. Use it to give one SSO user read-only access
+         * while another can write.
+         */
+        private String scopesHeader = "";
     }
 
     @Getter

@@ -122,10 +122,16 @@ public class AuthFilter extends OncePerRequestFilter {
                     "proxy_identity_missing");
         }
         java.util.Set<String> scopes = java.util.Arrays.stream(
-                        props.getProxyAuth().getScopes().split(","))
+                        scopeSource(request).split(","))
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
+                .map(String::toLowerCase)
+                .filter(s -> s.equals("read") || s.equals("write"))
                 .collect(java.util.stream.Collectors.toSet());
+        if (scopes.isEmpty()) {
+            throw ApiException.forbidden(
+                    "The proxy supplied no supported admin scope (read/write).",
+                    "proxy_scope_invalid");
+        }
         request.setAttribute(ADMIN_PRINCIPAL_ATTR,
                 new com.anindra.path.admin.TenancyService.Principal(identity.trim(), scopes));
         boolean mutating = !"GET".equalsIgnoreCase(request.getMethod())
@@ -133,6 +139,25 @@ public class AuthFilter extends OncePerRequestFilter {
         if (mutating && !scopes.contains("write")) {
             throw ApiException.forbidden("This identity has read-only scope.");
         }
+    }
+
+    /**
+     * The global scope default, or the per-identity header when {@code scopes-header} is
+     * configured. When the header is configured it is authoritative: a missing value fails
+     * closed instead of silently inheriting a broader default.
+     */
+    private String scopeSource(HttpServletRequest request) {
+        String scopesHeader = props.getProxyAuth().getScopesHeader();
+        if (scopesHeader != null && !scopesHeader.isBlank()) {
+            String provided = request.getHeader(scopesHeader);
+            if (provided == null || provided.isBlank()) {
+                throw ApiException.unauthorized(
+                        "Admin access requires the proxy to send " + scopesHeader + ".",
+                        "proxy_scope_missing");
+            }
+            return provided;
+        }
+        return props.getProxyAuth().getScopes();
     }
 
     private boolean isPublicModelsRequest(HttpServletRequest request) {

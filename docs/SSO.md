@@ -39,6 +39,42 @@ skip its token screen — a signed-in browser lands straight on the dashboard.
 Every admin write is audited against the identity the proxy supplied, so
 `GET /admin/audit` answers "who changed this" with an email, not "shared-admin".
 
+## Per-user read-only roles
+
+By default every proxy-authenticated identity gets the same scopes. To make one
+SSO user read-only while another can write, have the proxy send scopes per
+identity as well:
+
+```yaml
+GATEWAY_PROXY_AUTH: "true"
+GATEWAY_PROXY_AUTH_HEADER: X-Forwarded-User
+GATEWAY_PROXY_AUTH_SCOPES_HEADER: X-Forwarded-Scopes
+# Fallback only when SCOPES_HEADER is not configured:
+GATEWAY_PROXY_AUTH_SCOPES: "read,write"
+```
+
+The proxy must then send both headers on every `/admin/**` request:
+
+```text
+X-Forwarded-User: viewer@example.com
+X-Forwarded-Scopes: read
+```
+
+`X-Forwarded-Scopes: read,write` grants writes. When `SCOPES_HEADER` is
+configured it is **authoritative**: a missing, empty or unsupported scope header
+fails closed (`401 proxy_scope_missing` / `403 proxy_scope_invalid`) instead of
+falling back to the broader `GATEWAY_PROXY_AUTH_SCOPES` default.
+
+The admin console reflects this automatically: `/admin/settings` returns the
+per-identity scopes and `can_write`, so a read-only user sees the console but
+every mutation button is disabled.
+
+Configure the header mapping in your IdP/proxy. For Authentik, a property mapping
+on the proxy provider can emit `X-Forwarded-Scopes` from group membership; for
+oauth2-proxy/Keycloak, map a group or realm role to the same header. The gateway
+does not read groups or roles itself — it trusts the header, exactly like the
+identity header.
+
 ## Authentik (recommended, self-hosted with Dokploy)
 
 1. Authentik → **Providers → Create → Proxy**, mode *Forward auth (single application)*.
